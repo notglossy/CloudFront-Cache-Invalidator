@@ -1,0 +1,30 @@
+{
+    "name": "notglossy/cloudfront-cache-invalidator",
+    "description": "WordPress plugin that automatically invalidates CloudFront cache when WordPress content is updated.",
+    "type": "library",
+    "require": {
+        "aws/aws-sdk-php": "^3.340"
+    },
+    "require-dev": {
+        "wp-coding-standards/wpcs": "^3.0",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+    },
+    "license": "GPL-3.0-or-later",
+    "autoload": {
+        "psr-4": {
+            "Notglossy\\CloudfrontCacheInvalidator\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "notglossy",
+            "email": "3867591+notglossy@users.noreply.github.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    }
+}
