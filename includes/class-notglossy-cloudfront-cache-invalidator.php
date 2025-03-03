@@ -1,19 +1,63 @@
 <?php
-
+/**
+ * Main plugin class for CloudFront Cache Invalidator.
+ *
+ * This class is responsible for handling all functionality related to
+ * CloudFront cache invalidation triggered by WordPress content changes.
+ *
+ * @since 1.0.0
+ * @package CloudFrontCacheInvalidator
+ */
 class NotGlossy_CloudFront_Cache_Invalidator {
 
-	// Plugin variables.
+	/**
+	 * The plugin settings array.
+	 *
+	 * @since 1.0.0
+	 * @access private
+	 * @var array $settings Stores all plugin settings.
+	 */
 	private $settings;
-	private $settings_group   = 'cloudfront_cache_invalidator_settings';
-	private $settings_option  = 'cloudfront_cache_invalidator_options';
+
+	/**
+	 * Settings group name.
+	 *
+	 * @since 1.0.0
+	 * @access private
+	 * @var string $settings_group WordPress settings group name.
+	 */
+	private $settings_group = 'cloudfront_cache_invalidator_settings';
+
+	/**
+	 * Settings option name.
+	 *
+	 * @since 1.0.0
+	 * @access private
+	 * @var string $settings_option WordPress settings option name.
+	 */
+	private $settings_option = 'cloudfront_cache_invalidator_options';
+
+	/**
+	 * Settings section ID.
+	 *
+	 * @since 1.0.0
+	 * @access private
+	 * @var string $settings_section WordPress settings section ID.
+	 */
 	private $settings_section = 'cloudfront_cache_invalidator_section';
 
 	/**
-	 * Initialize the plugin.
+	 * Constructor.
+	 *
+	 * Initializes the plugin by setting up WordPress hooks and loading settings.
+	 * Also registers hooks for content updates that should trigger cache invalidation.
+	 *
+	 * @since 1.0.0
+	 * @access public
 	 */
 	public function __construct() {
 
-		// Load settings
+		// Load settings.
 		$this->settings = get_option( $this->settings_option );
 
 		// Add JavaScript for the settings page.
@@ -44,6 +88,13 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 	/**
 	 * Register plugin settings.
+	 *
+	 * Sets up the WordPress settings API fields, sections, and validations
+	 * for the plugin's configuration page.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function register_settings() {
 		register_setting(
@@ -110,6 +161,12 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 	/**
 	 * Add settings page to admin menu.
+	 *
+	 * Creates the admin menu item under Settings for plugin configuration.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function add_settings_page() {
 		add_options_page(
@@ -123,6 +180,14 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 	/**
 	 * Enqueue admin scripts.
+	 *
+	 * Adds JavaScript to the settings page for dynamic form behavior
+	 * like toggling access key fields when IAM role is selected.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @param string $hook The current admin page hook suffix.
+	 * @return void
 	 */
 	public function enqueue_admin_scripts( $hook ) {
 
@@ -131,7 +196,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 		}
 
 		// Register and enqueue inline script.
-		wp_register_script( 'cloudfront-cache-invalidator-js', false );
+		wp_register_script( 'cloudfront-cache-invalidator-js', false, array(), '1.0.0', false );
 		wp_enqueue_script( 'cloudfront-cache-invalidator-js' );
 
 		$script = '
@@ -158,6 +223,12 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 	/**
 	 * Settings section description.
+	 *
+	 * Outputs the HTML for the settings section description on the admin page.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function settings_section_callback() {
 		echo '<p>Configure your AWS credentials and CloudFront distribution settings.</p>';
@@ -166,73 +237,122 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 	/**
 	 * IAM Role field callback.
+	 *
+	 * Renders the IAM role checkbox field for the settings page.
+	 * This enables using AWS IAM roles instead of access keys.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function use_iam_role_callback() {
 		$value = isset( $this->settings['use_iam_role'] ) ? $this->settings['use_iam_role'] : '0';
-		echo '<input type="checkbox" id="use_iam_role" name="' . $this->settings_option . '[use_iam_role]" value="1" ' . checked( '1', $value, false ) . '/>';
+		echo '<input type="checkbox" id="use_iam_role" name="' . esc_attr( $this->settings_option ) . '[use_iam_role]" value="1" ' . checked( '1', $value, false ) . '/>';
 		echo '<label for="use_iam_role"> Use instance IAM role (recommended if your WordPress server is running on AWS)</label>';
 		echo '<p class="description">When enabled, AWS access keys below are optional and will only be used as a fallback.</p>';
 	}
 
 	/**
 	 * AWS Access Key field callback.
+	 *
+	 * Renders the AWS Access Key field for the settings page.
+	 * This field can be disabled when using IAM roles.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function aws_access_key_callback() {
 		$value    = isset( $this->settings['aws_access_key'] ) ? $this->settings['aws_access_key'] : '';
 		$disabled = isset( $this->settings['use_iam_role'] ) && '1' === $this->settings['use_iam_role'] ? 'disabled' : '';
-		echo '<input type="text" id="aws_access_key" name="' . $this->settings_option . '[aws_access_key]" value="' . esc_attr( $value ) . '" class="regular-text" ' . $disabled . '/>';
+		echo '<input type="text" id="aws_access_key" name="' . esc_attr( $this->settings_option ) . '[aws_access_key]" value="' . esc_attr( $value ) . '" class="regular-text" ' . esc_attr( $disabled ) . '/>';
 		echo '<p class="description">Optional when using IAM role</p>';
 
-		// Add a hidden field to preserve the value when disabled
+		// Add a hidden field to preserve the value when disabled.
 		if ( $disabled ) {
-			echo '<input type="hidden" name="' . $this->settings_option . '[aws_access_key]" value="' . esc_attr( $value ) . '" />';
+			echo '<input type="hidden" name="' . esc_attr( $this->settings_option ) . '[aws_access_key]" value="' . esc_attr( $value ) . '" />';
 		}
 	}
 
 	/**
 	 * AWS Secret Key field callback.
+	 *
+	 * Renders the AWS Secret Key field for the settings page.
+	 * This field can be disabled when using IAM roles.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function aws_secret_key_callback() {
 		$value    = isset( $this->settings['aws_secret_key'] ) ? $this->settings['aws_secret_key'] : '';
 		$disabled = isset( $this->settings['use_iam_role'] ) && '1' === $this->settings['use_iam_role'] ? 'disabled' : '';
-		echo '<input type="password" id="aws_secret_key" name="' . $this->settings_option . '[aws_secret_key]" value="' . esc_attr( $value ) . '" class="regular-text" ' . $disabled . '/>';
+		echo '<input type="password" id="aws_secret_key" name="' . esc_attr( $this->settings_option ) . '[aws_secret_key]" value="' . esc_attr( $value ) . '" class="regular-text" ' . esc_attr( $disabled ) . '/>';
 		echo '<p class="description">Optional when using IAM role</p>';
 
 		// Add a hidden field to preserve the value when disabled.
 		if ( $disabled ) {
-			echo '<input type="hidden" name="' . $this->settings_option . '[aws_secret_key]" value="' . esc_attr( $value ) . '" />';
+			echo '<input type="hidden" name="' . esc_attr( $this->settings_option ) . '[aws_secret_key]" value="' . esc_attr( $value ) . '" />';
 		}
 	}
 
 	/**
 	 * AWS Region field callback.
+	 *
+	 * Renders the AWS Region field for the settings page.
+	 * Defaults to us-east-1 if not specified.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function aws_region_callback() {
 		$value = isset( $this->settings['aws_region'] ) ? $this->settings['aws_region'] : 'us-east-1';
-		echo '<input type="text" id="aws_region" name="' . $this->settings_option . '[aws_region]" value="' . esc_attr( $value ) . '" class="regular-text" />';
+		echo '<input type="text" id="aws_region" name="' . esc_attr( $this->settings_option ) . '[aws_region]" value="' . esc_attr( $value ) . '" class="regular-text" />';
 		echo '<p class="description">Default: us-east-1</p>';
 	}
 
 	/**
 	 * Distribution ID field callback.
+	 *
+	 * Renders the CloudFront Distribution ID field for the settings page.
+	 * This is required for all invalidation requests.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function distribution_id_callback() {
 		$value = isset( $this->settings['distribution_id'] ) ? $this->settings['distribution_id'] : '';
-		echo '<input type="text" id="distribution_id" name="' . $this->settings_option . '[distribution_id]" value="' . esc_attr( $value ) . '" class="regular-text" />';
+		echo '<input type="text" id="distribution_id" name="' . esc_attr( $this->settings_option ) . '[distribution_id]" value="' . esc_attr( $value ) . '" class="regular-text" />';
 		echo '<p class="description">The ID of your CloudFront distribution (e.g., E1ABCDEFGHIJKL)</p>';
 	}
 
 	/**
 	 * Invalidation Paths field callback.
+	 *
+	 * Renders the Default Invalidation Paths field for the settings page.
+	 * These paths will be used for site-wide invalidations.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function invalidation_paths_callback() {
 		$value = isset( $this->settings['invalidation_paths'] ) ? $this->settings['invalidation_paths'] : '/*';
-		echo '<textarea id="invalidation_paths" name="' . $this->settings_option . '[invalidation_paths]" rows="3" class="large-text">' . esc_textarea( $value ) . '</textarea>';
+		echo '<textarea id="invalidation_paths" name="' . esc_attr( $this->settings_option ) . '[invalidation_paths]" rows="3" class="large-text">' . esc_textarea( $value ) . '</textarea>';
 		echo '<p class="description">Enter paths to invalidate (one per line). Use /* for all files. For specific paths, start with /.</p>';
 	}
 
 	/**
 	 * Validate settings.
+	 *
+	 * Sanitizes and validates user input from the settings form.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @param array $input The raw input from the settings form.
+	 * @return array Sanitized settings values.
 	 */
 	public function validate_settings( $input ) {
 		$new_input = array();
@@ -265,6 +385,13 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 	/**
 	 * Render the settings page.
+	 *
+	 * Outputs the HTML for the plugin's admin settings page,
+	 * including the settings form and manual invalidation button.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
 	public function render_settings_page() {
 		?>
@@ -319,7 +446,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 				$result = $this->invalidate_all();
 
 				if ( is_wp_error( $result ) ) {
-					echo '<div class="notice notice-error"><p>Error: ' . $result->get_error_message() . '</p></div>';
+					echo '<div class="notice notice-error"><p>Error: ' . esc_html( $result->get_error_message() ) . '</p></div>';
 				} else {
 					echo '<div class="notice notice-success"><p>CloudFront invalidation request has been sent successfully!</p></div>';
 				}
@@ -331,8 +458,17 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 	/**
 	 * Invalidate cache when a post is updated.
+	 *
+	 * Triggers a CloudFront invalidation when a post is saved,
+	 * creating paths based on the post's permalink and related archives.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @param int     $post_id The ID of the post being saved.
+	 * @param WP_Post $post    The post object.
+	 * @return void
 	 */
-	public function invalidate_on_post_update( $post_id, $post, $update ) {
+	public function invalidate_on_post_update( $post_id, $post ) {
 		// Skip if this is an autosave.
 		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
 			return;
@@ -353,7 +489,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 		if ( $permalink ) {
 			// Convert full URL to path.
-			$url_parts = parse_url( $permalink );
+			$url_parts = wp_parse_url( $permalink );
 			$path      = isset( $url_parts['path'] ) ? $url_parts['path'] : '/';
 
 			// Invalidate the specific post URL and potentially related paths.
@@ -370,7 +506,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 				// Get archive URL.
 				$archive_url = get_post_type_archive_link( $post->post_type );
 				if ( $archive_url ) {
-					$archive_parts = parse_url( $archive_url );
+					$archive_parts = wp_parse_url( $archive_url );
 					$archive_path  = isset( $archive_parts['path'] ) ? $archive_parts['path'] : '/';
 					$paths[]       = $archive_path;
 					$paths[]       = $archive_path . '*';
@@ -384,7 +520,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 						foreach ( $terms as $term ) {
 							$term_link = get_term_link( $term );
 							if ( ! is_wp_error( $term_link ) ) {
-								$term_parts = parse_url( $term_link );
+								$term_parts = wp_parse_url( $term_link );
 								$term_path  = isset( $term_parts['path'] ) ? $term_parts['path'] : '/';
 								$paths[]    = $term_path;
 								$paths[]    = $term_path . '*';
@@ -401,14 +537,31 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 	/**
 	 * Invalidate cache when a post is deleted.
+	 *
+	 * Triggers a site-wide CloudFront invalidation when a post is deleted,
+	 * as determining specific affected paths is difficult after deletion.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return void
 	 */
-	public function invalidate_on_post_delete( $post_id ) {
+	public function invalidate_on_post_delete() {
 		// We need to invalidate more broadly since the post URL is now gone.
 		$this->invalidate_all();
 	}
 
 	/**
 	 * Invalidate cache when a term is updated.
+	 *
+	 * Triggers a CloudFront invalidation when a taxonomy term
+	 * (category, tag, etc.) is updated.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @param int    $term_id  The term ID.
+	 * @param int    $tt_id    The term taxonomy ID.
+	 * @param string $taxonomy The taxonomy slug.
+	 * @return void
 	 */
 	public function invalidate_on_term_update( $term_id, $tt_id, $taxonomy ) {
 
@@ -417,7 +570,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 		if ( ! is_wp_error( $term_link ) ) {
 			// Convert full URL to path.
-			$url_parts = parse_url( $term_link );
+			$url_parts = wp_parse_url( $term_link );
 			$path      = isset( $url_parts['path'] ) ? $url_parts['path'] : '/';
 
 			// Invalidate the specific term URL and potentially related paths.
@@ -429,7 +582,14 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	}
 
 	/**
-	 * Invalidate all cache
+	 * Invalidate all cache.
+	 *
+	 * Triggers a CloudFront invalidation for all paths defined
+	 * in the default invalidation paths setting.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @return mixed WP_Error on failure, AWS result object on success
 	 */
 	public function invalidate_all() {
 
@@ -443,6 +603,14 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 	/**
 	 * Send invalidation request to CloudFront.
+	 *
+	 * Creates and sends an invalidation request to the CloudFront API
+	 * for the specified paths.
+	 *
+	 * @since 1.0.0
+	 * @access public
+	 * @param array $paths Array of paths to invalidate (e.g., ['/*', '/blog/*']).
+	 * @return mixed WP_Error on failure, AWS result object on success
 	 */
 	public function send_invalidation_request( $paths = array( '/*' ) ) {
 
