@@ -3,6 +3,7 @@
     "description": "WordPress plugin that automatically invalidates CloudFront cache when WordPress content is updated.",
     "type": "library",
     "require": {
+        "php": ">=8.1",
         "aws/aws-sdk-php": "^3.340"
     },
     "require-dev": {
@@ -36,6 +37,9 @@
     "config": {
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "platform": {
+            "php": "8.1"
         }
     }
 }

@@ -17,7 +17,7 @@
  * Author: Not Glossy LLC
  * Author URI: https://github.com/notglossy
  * License: GPL3
- * Requires PHP: 7.2
+ * Requires PHP: 8.1
  */
 
 // If this file is called directly, abort.
