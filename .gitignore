@@ -71,3 +71,4 @@ CLAUDE.md
 .phpcs.cache
 .phpstan/
 .vscode
+.phpunit.result.cache
