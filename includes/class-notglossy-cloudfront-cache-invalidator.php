@@ -73,6 +73,10 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
 
+		// Handle manual invalidation form submission.
+		add_action( 'admin_post_cloudfront_invalidate_all', array( $this, 'handle_manual_invalidation' ) );
+		add_action( 'admin_notices', array( $this, 'display_invalidation_notices' ) );
+
 		// Register hooks for content updates.
 		add_action( 'save_post', array( $this, 'invalidate_on_post_update' ), 10, 3 );
 		add_action( 'deleted_post', array( $this, 'invalidate_on_post_delete' ) );
@@ -477,7 +481,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	public function aws_region_callback() {
 		$value = isset( $this->settings['aws_region'] ) ? $this->settings['aws_region'] : 'us-east-1';
 		echo '<input type="text" id="aws_region" name="' . esc_attr( $this->settings_option ) . '[aws_region]" value="' . esc_attr( $value ) . '" class="regular-text" />';
-		echo '<p class="description">Default: us-east-1</p>';
+		echo '<p class="description">AWS region (e.g., us-east-1, eu-west-2, ap-southeast-1). Default: us-east-1</p>';
 	}
 
 	/**
@@ -493,7 +497,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	public function distribution_id_callback() {
 		$value = isset( $this->settings['distribution_id'] ) ? $this->settings['distribution_id'] : '';
 		echo '<input type="text" id="distribution_id" name="' . esc_attr( $this->settings_option ) . '[distribution_id]" value="' . esc_attr( $value ) . '" class="regular-text" />';
-		echo '<p class="description">The ID of your CloudFront distribution (e.g., E1ABCDEFGHIJKL)</p>';
+		echo '<p class="description">CloudFront Distribution ID (13-14 uppercase characters, e.g., E1ABCDEFGHIJKL)</p>';
 	}
 
 	/**
@@ -509,7 +513,113 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	public function invalidation_paths_callback() {
 		$value = isset( $this->settings['invalidation_paths'] ) ? $this->settings['invalidation_paths'] : '/*';
 		echo '<textarea id="invalidation_paths" name="' . esc_attr( $this->settings_option ) . '[invalidation_paths]" rows="3" class="large-text">' . esc_textarea( $value ) . '</textarea>';
-		echo '<p class="description">Enter paths to invalidate (one per line). Use /* for all files. For specific paths, start with /.</p>';
+		echo '<p class="description">Enter paths to invalidate (one per line). Each path must start with /. Examples: /*, /blog/*, /images/logo.png</p>';
+	}
+
+	/**
+	 * Validate AWS region format.
+	 *
+	 * Validates that the AWS region follows the correct format pattern.
+	 * Examples: us-east-1, eu-west-2, ap-southeast-1
+	 *
+	 * @since 1.2.0
+	 * @access private
+	 * @param string $region AWS region to validate.
+	 * @return string|WP_Error Validated region or WP_Error on failure.
+	 */
+	private function validate_aws_region( $region ) {
+		$region = trim( strtolower( $region ) );
+
+		// Allow empty region (will use default).
+		if ( '' === $region ) {
+			return $region;
+		}
+
+		// Validate region format: xx-xxxx-# or xxx-xxxx-#.
+		if ( ! preg_match( '/^[a-z]{2,3}-[a-z]+-\d+$/', $region ) ) {
+			return new WP_Error(
+				'invalid_aws_region',
+				__( 'Invalid AWS region format. Please use format like: us-east-1, eu-west-2, ap-southeast-1', 'cloudfront-cache-invalidator' )
+			);
+		}
+
+		return $region;
+	}
+
+	/**
+	 * Validate CloudFront Distribution ID format.
+	 *
+	 * Validates and normalizes the CloudFront Distribution ID.
+	 * Distribution IDs are 13-14 uppercase alphanumeric characters.
+	 * Examples: E1ABCDEFGHIJKL, E2XYZ123456789
+	 *
+	 * @since 1.2.0
+	 * @access private
+	 * @param string $distribution_id Distribution ID to validate.
+	 * @return string|WP_Error Validated (uppercase) distribution ID or WP_Error on failure.
+	 */
+	private function validate_distribution_id( $distribution_id ) {
+		$distribution_id = trim( strtoupper( $distribution_id ) );
+
+		// Validate distribution ID format: 13-14 alphanumeric characters.
+		if ( ! preg_match( '/^[A-Z0-9]{13,14}$/', $distribution_id ) ) {
+			return new WP_Error(
+				'invalid_distribution_id',
+				__( 'Invalid CloudFront Distribution ID. Expected 13-14 uppercase alphanumeric characters (e.g., E1ABCDEFGHIJKL)', 'cloudfront-cache-invalidator' )
+			);
+		}
+
+		return $distribution_id;
+	}
+
+	/**
+	 * Validate invalidation paths format.
+	 *
+	 * Validates that each invalidation path starts with a forward slash.
+	 * CloudFront requires all paths to begin with /.
+	 * Examples: /*, /blog/*, /images/logo.png
+	 *
+	 * @since 1.2.0
+	 * @access private
+	 * @param string $paths Newline-separated invalidation paths.
+	 * @return string|WP_Error Validated paths or WP_Error on failure.
+	 */
+	private function validate_invalidation_paths( $paths ) {
+		// Split paths by newline and trim each.
+		$paths_array = array_map( 'trim', explode( "\n", $paths ) );
+
+		// Filter out empty lines.
+		$paths_array = array_filter(
+			$paths_array,
+			function ( $path ) {
+				return '' !== $path;
+			}
+		);
+
+		// Must have at least one path.
+		if ( empty( $paths_array ) ) {
+			return new WP_Error(
+				'empty_invalidation_paths',
+				__( 'At least one invalidation path is required.', 'cloudfront-cache-invalidator' )
+			);
+		}
+
+		// Validate each path starts with /.
+		foreach ( $paths_array as $path ) {
+			if ( '/' !== substr( $path, 0, 1 ) ) {
+				return new WP_Error(
+					'invalid_invalidation_path',
+					sprintf(
+						/* translators: %s: The invalid path */
+						__( 'Invalidation path "%s" must start with /. Example: /*, /blog/*, /images/', 'cloudfront-cache-invalidator' ),
+						esc_html( $path )
+					)
+				);
+			}
+		}
+
+		// Return validated paths joined by newline.
+		return implode( "\n", $paths_array );
 	}
 
 	/**
@@ -561,19 +671,66 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 		// Never persist plaintext fields.
 		unset( $new_input['aws_access_key'], $new_input['aws_secret_key'] );
 
-		// Region.
+		// Region validation.
 		if ( isset( $input['aws_region'] ) ) {
-			$new_input['aws_region'] = sanitize_text_field( $input['aws_region'] );
+			$region = sanitize_text_field( $input['aws_region'] );
+
+			$validated_region = $this->validate_aws_region( $region );
+			if ( is_wp_error( $validated_region ) ) {
+				add_settings_error(
+					$this->settings_option,
+					'invalid_aws_region',
+					$validated_region->get_error_message(),
+					'error'
+				);
+				// Keep existing or use default.
+				$new_input['aws_region'] = isset( $this->settings['aws_region'] ) ? $this->settings['aws_region'] : 'us-east-1';
+			} else {
+				$new_input['aws_region'] = $validated_region;
+			}
 		}
 
-		// Distribution ID.
+		// Distribution ID validation.
 		if ( isset( $input['distribution_id'] ) ) {
-			$new_input['distribution_id'] = sanitize_text_field( $input['distribution_id'] );
+			$dist_id = sanitize_text_field( $input['distribution_id'] );
+
+			// Allow empty (user can clear the field).
+			if ( '' === $dist_id ) {
+				$new_input['distribution_id'] = '';
+			} else {
+				$validated_dist_id = $this->validate_distribution_id( $dist_id );
+				if ( is_wp_error( $validated_dist_id ) ) {
+					add_settings_error(
+						$this->settings_option,
+						'invalid_distribution_id',
+						$validated_dist_id->get_error_message(),
+						'error'
+					);
+					// Keep existing value.
+					$new_input['distribution_id'] = isset( $this->settings['distribution_id'] ) ? $this->settings['distribution_id'] : '';
+				} else {
+					$new_input['distribution_id'] = $validated_dist_id;
+				}
+			}
 		}
 
-		// Invalidation paths.
+		// Invalidation paths validation.
 		if ( isset( $input['invalidation_paths'] ) ) {
-			$new_input['invalidation_paths'] = sanitize_textarea_field( $input['invalidation_paths'] );
+			$paths = sanitize_textarea_field( $input['invalidation_paths'] );
+
+			$validated_paths = $this->validate_invalidation_paths( $paths );
+			if ( is_wp_error( $validated_paths ) ) {
+				add_settings_error(
+					$this->settings_option,
+					'invalid_invalidation_paths',
+					$validated_paths->get_error_message(),
+					'error'
+				);
+				// Keep existing or use default.
+				$new_input['invalidation_paths'] = isset( $this->settings['invalidation_paths'] ) ? $this->settings['invalidation_paths'] : '/*';
+			} else {
+				$new_input['invalidation_paths'] = $validated_paths;
+			}
 		}
 
 		// If neither encrypted value exists, clear the stored flag.
@@ -643,28 +800,110 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 			</form>
 			<hr>
 			<h2>Manual Invalidation</h2>
-			<form method="post" action="">
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="cloudfront_invalidate_all">
 				<?php wp_nonce_field( 'manual_invalidation', 'cloudfront_invalidation_nonce' ); ?>
 				<p>
 					<input type="submit" name="cloudfront_invalidate_all" class="button button-primary" value="Invalidate All CloudFront Cache">
 				</p>
 			</form>
-
-			<?php
-			// Handle manual invalidation.
-			if ( isset( $_POST['cloudfront_invalidate_all'] ) && check_admin_referer( 'manual_invalidation', 'cloudfront_invalidation_nonce' ) ) {
-
-				$result = $this->invalidate_all();
-
-				if ( is_wp_error( $result ) ) {
-					echo '<div class="notice notice-error"><p>Error: ' . esc_html( $result->get_error_message() ) . '</p></div>';
-				} else {
-					echo '<div class="notice notice-success"><p>CloudFront invalidation request has been sent successfully!</p></div>';
-				}
-			}
-			?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Handle manual invalidation form submission.
+	 *
+	 * Processes the manual cache invalidation request via admin-post.php,
+	 * implementing POST-Redirect-GET pattern to prevent duplicate submissions.
+	 *
+	 * @since 1.1.1
+	 * @access public
+	 * @return void
+	 */
+	public function handle_manual_invalidation() {
+		// Check user permissions.
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have sufficient permissions to perform this action.', 'cloudfront-cache-invalidator' ) );
+		}
+
+		// Verify nonce.
+		check_admin_referer( 'manual_invalidation', 'cloudfront_invalidation_nonce' );
+
+		// Perform invalidation.
+		$result = $this->invalidate_all();
+
+		// Store result in transient for display after redirect.
+		$user_id       = get_current_user_id();
+		$transient_key = 'cloudfront_invalidation_notice_' . $user_id;
+
+		if ( is_wp_error( $result ) ) {
+			set_transient(
+				$transient_key,
+				array(
+					'type'    => 'error',
+					'message' => $result->get_error_message(),
+				),
+				60
+			);
+		} else {
+			set_transient(
+				$transient_key,
+				array(
+					'type'    => 'success',
+					'message' => __( 'CloudFront invalidation request has been sent successfully!', 'cloudfront-cache-invalidator' ),
+				),
+				60
+			);
+		}
+
+		// Redirect back to settings page.
+		$redirect_url = add_query_arg(
+			'page',
+			'cloudfront-cache-invalidator',
+			admin_url( 'options-general.php' )
+		);
+
+		wp_safe_redirect( $redirect_url );
+		exit;
+	}
+
+	/**
+	 * Display admin notices for manual invalidation results.
+	 *
+	 * Retrieves and displays success/error messages stored in transients
+	 * after manual invalidation redirects.
+	 *
+	 * @since 1.1.1
+	 * @access public
+	 * @return void
+	 */
+	public function display_invalidation_notices() {
+		// Only show on our settings page.
+		$screen = get_current_screen();
+		if ( ! $screen || 'settings_page_cloudfront-cache-invalidator' !== $screen->id ) {
+			return;
+		}
+
+		// Check for notice transient.
+		$user_id       = get_current_user_id();
+		$transient_key = 'cloudfront_invalidation_notice_' . $user_id;
+		$notice        = get_transient( $transient_key );
+
+		if ( $notice && is_array( $notice ) && isset( $notice['type'], $notice['message'] ) ) {
+			$notice_class   = 'error' === $notice['type'] ? 'notice-error' : 'notice-success';
+			$message_prefix = 'error' === $notice['type'] ? __( 'Error: ', 'cloudfront-cache-invalidator' ) : '';
+
+			printf(
+				'<div class="notice %s is-dismissible"><p>%s%s</p></div>',
+				esc_attr( $notice_class ),
+				esc_html( $message_prefix ),
+				esc_html( $notice['message'] )
+			);
+
+			// Delete transient after displaying (single-use).
+			delete_transient( $transient_key );
+		}
 	}
 
 	/**
