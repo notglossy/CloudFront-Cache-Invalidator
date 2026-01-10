@@ -180,12 +180,14 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 			return false;
 		}
 
+		// phpcs:disable WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Used for encryption, not obfuscation.
 		return wp_json_encode(
 			array(
 				'iv'    => base64_encode( $iv ),
 				'value' => base64_encode( $ciphertext ),
 			)
 		);
+		// phpcs:enable WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
 	}
 
 	/**
@@ -206,8 +208,10 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 			return false;
 		}
 
+		// phpcs:disable WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Used for decryption, not obfuscation.
 		$iv         = base64_decode( $data['iv'], true );
 		$ciphertext = base64_decode( $data['value'], true );
+		// phpcs:enable WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
 
 		if ( false === $iv || false === $ciphertext ) {
 			return false;

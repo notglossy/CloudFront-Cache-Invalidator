@@ -3,11 +3,16 @@
     "description": "WordPress plugin that automatically invalidates CloudFront cache when WordPress content is updated.",
     "type": "library",
     "require": {
+        "php": ">=8.1",
         "aws/aws-sdk-php": "^3.340"
     },
     "require-dev": {
         "wp-coding-standards/wpcs": "^3.0",
-        "dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "phpunit/phpunit": "^9.0",
+        "mockery/mockery": "^1.4",
+        "brain/monkey": "^2.6",
+        "yoast/wp-test-utils": "^1.0"
     },
     "license": "GPL-3.0-or-later",
     "autoload": {
@@ -24,11 +29,17 @@
     "minimum-stability": "stable",
     "scripts": {
         "phpcs": "vendor/bin/phpcs",
-        "phpcbf": "vendor/bin/phpcbf"
+        "phpcbf": "vendor/bin/phpcbf",
+        "test": "vendor/bin/phpunit",
+        "test:unit": "vendor/bin/phpunit --testsuite Unit",
+        "test:coverage": "vendor/bin/phpunit --coverage-html coverage"
     },
     "config": {
         "allow-plugins": {
             "dealerdirect/phpcodesniffer-composer-installer": true
+        },
+        "platform": {
+            "php": "8.1"
         }
     }
 }
