@@ -1,8 +1,73 @@
-composer.phar
-/vendor/
-/.vscode/
+# WordPress Core runtime artifacts
+wp-content/cache/
+wp-content/uploads/
+wp-content/upgrade/
+wp-content/backups/
 
-# Commit your application's lock file https://getcomposer.org/doc/01-basic-usage.md#commit-your-composer-lock-file-to-version-control
-# You may choose to ignore a library lock file http://getcomposer.org/doc/02-libraries.md#lock-file
-# composer.lock
-composer require --dev wp-coding-standards/wpcs:"^3.0"
+# Logs and database dumps
+*.log
+*.sql
+*.sqlite
+
+# Composer dependencies and executables
+vendor/
+composer.phar
+composer.lock
+
+# Node dependencies and build outputs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+build/
+dist/
+public/
+.parcel-cache/
+.next/
+coverage/
+
+# Plugin build artifacts
+wordpress-oidc-auth-*.zip
+
+# Environment and secrets files
+.env
+.env.*
+.envrc
+.env.local
+.env.production
+.env.development
+
+# IDE/editor settings
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.iml
+.fleet/
+.phpstorm.meta.php
+.history/
+.vs/
+
+# Operating system cruft
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon
+Desktop.ini
+
+# Local automation configs
+.roo/
+.openhands/
+.cache/
+.claude/
+tmp/
+plans/
+CLAUDE.md
+.mcp.json
+
+# Code quality tool caches
+.phpcs-cache
+.phpcs.cache
+.phpstan/
+.vscode

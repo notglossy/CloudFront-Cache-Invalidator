@@ -180,6 +180,14 @@ A: Yes, the plugin supports all post types including custom ones.
 
 This plugin is licensed under the [GPL v2 or later](https://www.gnu.org/licenses/gpl-2.0.html).
 
+## Development
+
+### Coding standards
+
+- Install dev tools: `composer install` (includes dev dependencies)
+- Run lint: `composer phpcs`
+- Run auto-fix: `composer phpcbf`
+
 ## Support
 
 For support, feature requests, or bug reports, please [create an issue](https://github.com/notglossy/CloudFront-Cache-Invalidator/issues) on GitHub.

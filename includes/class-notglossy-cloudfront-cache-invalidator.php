@@ -10,6 +10,8 @@
  */
 class NotGlossy_CloudFront_Cache_Invalidator {
 
+	const CIPHER = 'AES-256-CBC';
+
 	/**
 	 * The plugin settings array.
 	 *
@@ -58,7 +60,11 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	public function __construct() {
 
 		// Load settings.
-		$this->settings = get_option( $this->settings_option );
+		$this->settings = get_option( $this->settings_option, array() );
+		if ( ! is_array( $this->settings ) ) {
+			$this->settings = array();
+		}
+		$this->settings = $this->migrate_legacy_credentials( $this->settings );
 
 		// Add JavaScript for the settings page.
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
@@ -84,6 +90,176 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 
 		// Custom invalidation for categories/terms.
 		add_action( 'edited_term', array( $this, 'invalidate_on_term_update' ), 10, 3 );
+	}
+
+	/**
+		* Migrate legacy plaintext credentials to encrypted storage.
+		*
+		* @since 1.0.1
+		* @access private
+		* @param array $settings Current settings array.
+		* @return array Updated settings.
+		*/
+	private function migrate_legacy_credentials( $settings ) {
+		$updated = false;
+
+		if ( isset( $settings['aws_access_key'] ) && ! empty( $settings['aws_access_key'] ) ) {
+			$encrypted = $this->encrypt_value( $settings['aws_access_key'] );
+			if ( false !== $encrypted ) {
+				$settings['aws_access_key_enc'] = $encrypted;
+				$settings['credentials_stored'] = true;
+				$updated                        = true;
+			}
+			unset( $settings['aws_access_key'] );
+		}
+
+		if ( isset( $settings['aws_secret_key'] ) && ! empty( $settings['aws_secret_key'] ) ) {
+			$encrypted = $this->encrypt_value( $settings['aws_secret_key'] );
+			if ( false !== $encrypted ) {
+				$settings['aws_secret_key_enc'] = $encrypted;
+				$settings['credentials_stored'] = true;
+				$updated                        = true;
+			}
+			unset( $settings['aws_secret_key'] );
+		}
+
+		if ( $updated ) {
+			update_option( $this->settings_option, $settings );
+		}
+
+		return $settings;
+	}
+
+	/**
+		* Get derived encryption key from WordPress salts.
+		*
+		* @since 1.0.1
+		* @access private
+		* @return string Binary encryption key.
+		*/
+	private function get_encryption_key() {
+		$parts = array();
+
+		if ( defined( 'AUTH_KEY' ) ) {
+			$parts[] = AUTH_KEY;
+		}
+
+		if ( defined( 'SECURE_AUTH_KEY' ) ) {
+			$parts[] = SECURE_AUTH_KEY;
+		}
+
+		if ( empty( $parts ) ) {
+			$parts[] = wp_salt( 'auth' );
+		}
+
+		return hash( 'sha256', implode( '', $parts ), true );
+	}
+
+	/**
+		* Encrypt a value using AES-256-CBC.
+		*
+		* @since 1.0.1
+		* @access private
+		* @param string $plaintext Plaintext to encrypt.
+		* @return string|false JSON encoded ciphertext payload or false on failure.
+		*/
+	private function encrypt_value( $plaintext ) {
+		if ( '' === $plaintext ) {
+			return false;
+		}
+
+		$key = $this->get_encryption_key();
+		$iv  = random_bytes( 16 );
+
+		$ciphertext = openssl_encrypt( $plaintext, self::CIPHER, $key, OPENSSL_RAW_DATA, $iv );
+		if ( false === $ciphertext ) {
+			return false;
+		}
+
+		return wp_json_encode(
+			array(
+				'iv'    => base64_encode( $iv ),
+				'value' => base64_encode( $ciphertext ),
+			)
+		);
+	}
+
+	/**
+		* Decrypt a value previously encrypted with encrypt_value().
+		*
+		* @since 1.0.1
+		* @access private
+		* @param string $encoded JSON encoded payload from encrypt_value().
+		* @return string|false Plaintext or false on failure.
+		*/
+	private function decrypt_value( $encoded ) {
+		if ( empty( $encoded ) ) {
+			return false;
+		}
+
+		$data = json_decode( $encoded, true );
+		if ( ! is_array( $data ) || empty( $data['iv'] ) || empty( $data['value'] ) ) {
+			return false;
+		}
+
+		$iv         = base64_decode( $data['iv'], true );
+		$ciphertext = base64_decode( $data['value'], true );
+
+		if ( false === $iv || false === $ciphertext ) {
+			return false;
+		}
+
+		$plaintext = openssl_decrypt( $ciphertext, self::CIPHER, $this->get_encryption_key(), OPENSSL_RAW_DATA, $iv );
+
+		return false === $plaintext ? false : $plaintext;
+	}
+
+	/**
+		* Resolve value from constant/env or encrypted option.
+		*
+		* @since 1.0.1
+		* @access private
+		* @param string $constant_name Constant name.
+		* @param string $env_name      Environment variable name.
+		* @param string $option_key    Option key for encrypted value.
+		* @return string|null
+		*/
+	private function get_env_or_option( $constant_name, $env_name, $option_key ) {
+		if ( defined( $constant_name ) && constant( $constant_name ) ) {
+			return constant( $constant_name );
+		}
+
+		$env_value = getenv( $env_name );
+		if ( $env_value ) {
+			return $env_value;
+		}
+
+		if ( isset( $this->settings[ $option_key ] ) ) {
+			return $this->decrypt_value( $this->settings[ $option_key ] );
+		}
+
+		return null;
+	}
+
+	/**
+		* Resolve AWS credentials honoring constants/env first.
+		*
+		* @since 1.0.1
+		* @access private
+		* @return array|null Array with key/secret or null.
+		*/
+	private function resolve_credentials() {
+		$access_key = $this->get_env_or_option( 'CLOUDFRONT_AWS_ACCESS_KEY', 'CLOUDFRONT_AWS_ACCESS_KEY', 'aws_access_key_enc' );
+		$secret_key = $this->get_env_or_option( 'CLOUDFRONT_AWS_SECRET_KEY', 'CLOUDFRONT_AWS_SECRET_KEY', 'aws_secret_key_enc' );
+
+		if ( $access_key && $secret_key ) {
+			return array(
+				'key'    => $access_key,
+				'secret' => $secret_key,
+			);
+		}
+
+		return null;
 	}
 
 	/**
@@ -209,10 +385,10 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 						$("#aws_access_key, #aws_secret_key").removeAttr("disabled");
 					}
 				};
-				
+
 				// Initial state
 				toggleCredentialFields();
-				
+
 				// On change
 				$("#use_iam_role").on("change", toggleCredentialFields);
 			});
@@ -263,15 +439,11 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	 * @return void
 	 */
 	public function aws_access_key_callback() {
-		$value    = isset( $this->settings['aws_access_key'] ) ? $this->settings['aws_access_key'] : '';
-		$disabled = isset( $this->settings['use_iam_role'] ) && '1' === $this->settings['use_iam_role'] ? 'disabled' : '';
-		echo '<input type="text" id="aws_access_key" name="' . esc_attr( $this->settings_option ) . '[aws_access_key]" value="' . esc_attr( $value ) . '" class="regular-text" ' . esc_attr( $disabled ) . '/>';
-		echo '<p class="description">Optional when using IAM role</p>';
-
-		// Add a hidden field to preserve the value when disabled.
-		if ( $disabled ) {
-			echo '<input type="hidden" name="' . esc_attr( $this->settings_option ) . '[aws_access_key]" value="' . esc_attr( $value ) . '" />';
-		}
+		$disabled    = isset( $this->settings['use_iam_role'] ) && '1' === $this->settings['use_iam_role'] ? 'disabled' : '';
+		$has_stored  = ! empty( $this->settings['credentials_stored'] ) && ! empty( $this->settings['aws_access_key_enc'] );
+		$placeholder = $has_stored ? '******** (stored)' : '';
+		echo '<input type="text" id="aws_access_key" name="' . esc_attr( $this->settings_option ) . '[aws_access_key]" value="" placeholder="' . esc_attr( $placeholder ) . '" class="regular-text" ' . esc_attr( $disabled ) . '/>';
+		echo '<p class="description">Optional when using IAM role. Leave blank to keep existing; enter a new key to replace.</p>';
 	}
 
 	/**
@@ -285,15 +457,11 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	 * @return void
 	 */
 	public function aws_secret_key_callback() {
-		$value    = isset( $this->settings['aws_secret_key'] ) ? $this->settings['aws_secret_key'] : '';
-		$disabled = isset( $this->settings['use_iam_role'] ) && '1' === $this->settings['use_iam_role'] ? 'disabled' : '';
-		echo '<input type="password" id="aws_secret_key" name="' . esc_attr( $this->settings_option ) . '[aws_secret_key]" value="' . esc_attr( $value ) . '" class="regular-text" ' . esc_attr( $disabled ) . '/>';
-		echo '<p class="description">Optional when using IAM role</p>';
-
-		// Add a hidden field to preserve the value when disabled.
-		if ( $disabled ) {
-			echo '<input type="hidden" name="' . esc_attr( $this->settings_option ) . '[aws_secret_key]" value="' . esc_attr( $value ) . '" />';
-		}
+		$disabled    = isset( $this->settings['use_iam_role'] ) && '1' === $this->settings['use_iam_role'] ? 'disabled' : '';
+		$has_stored  = ! empty( $this->settings['credentials_stored'] ) && ! empty( $this->settings['aws_secret_key_enc'] );
+		$placeholder = $has_stored ? '******** (stored)' : '';
+		echo '<input type="password" id="aws_secret_key" name="' . esc_attr( $this->settings_option ) . '[aws_secret_key]" value="" placeholder="' . esc_attr( $placeholder ) . '" class="regular-text" ' . esc_attr( $disabled ) . '/>';
+		echo '<p class="description">Optional when using IAM role. Leave blank to keep existing; enter a new secret to replace.</p>';
 	}
 
 	/**
@@ -355,29 +523,63 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	 * @return array Sanitized settings values.
 	 */
 	public function validate_settings( $input ) {
-		$new_input = array();
+		// Start with existing settings so we can preserve encrypted values when fields are left blank.
+		$new_input = $this->settings;
 
 		// IAM role checkbox.
 		$new_input['use_iam_role'] = isset( $input['use_iam_role'] ) ? '1' : '0';
 
-		if ( isset( $input['aws_access_key'] ) ) {
-			$new_input['aws_access_key'] = sanitize_text_field( $input['aws_access_key'] );
+		// Enforce HTTPS for credential submission.
+		$is_ssl = is_ssl();
+
+		$submitted_access = isset( $input['aws_access_key'] ) ? trim( $input['aws_access_key'] ) : '';
+		$submitted_secret = isset( $input['aws_secret_key'] ) ? trim( $input['aws_secret_key'] ) : '';
+
+		if ( ! $is_ssl && ( '' !== $submitted_access || '' !== $submitted_secret ) ) {
+			add_settings_error( $this->settings_option, 'cloudfront_https_required', __( 'AWS credentials cannot be saved over an insecure (HTTP) connection. Please use HTTPS.', 'cloudfront-cache-invalidator' ), 'error' );
+			// Do not modify stored credentials if submitted over HTTP.
+		} else {
+			// Access key handling.
+			if ( '' !== $submitted_access ) {
+				$encrypted = $this->encrypt_value( sanitize_text_field( $submitted_access ) );
+				if ( false !== $encrypted ) {
+					$new_input['aws_access_key_enc'] = $encrypted;
+					$new_input['credentials_stored'] = true;
+				}
+			}
+
+			// Secret key handling.
+			if ( '' !== $submitted_secret ) {
+				$encrypted = $this->encrypt_value( sanitize_text_field( $submitted_secret ) );
+				if ( false !== $encrypted ) {
+					$new_input['aws_secret_key_enc'] = $encrypted;
+					$new_input['credentials_stored'] = true;
+				}
+			}
 		}
 
-		if ( isset( $input['aws_secret_key'] ) ) {
-			$new_input['aws_secret_key'] = sanitize_text_field( $input['aws_secret_key'] );
-		}
+		// Never persist plaintext fields.
+		unset( $new_input['aws_access_key'], $new_input['aws_secret_key'] );
 
+		// Region.
 		if ( isset( $input['aws_region'] ) ) {
 			$new_input['aws_region'] = sanitize_text_field( $input['aws_region'] );
 		}
 
+		// Distribution ID.
 		if ( isset( $input['distribution_id'] ) ) {
 			$new_input['distribution_id'] = sanitize_text_field( $input['distribution_id'] );
 		}
 
+		// Invalidation paths.
 		if ( isset( $input['invalidation_paths'] ) ) {
 			$new_input['invalidation_paths'] = sanitize_textarea_field( $input['invalidation_paths'] );
+		}
+
+		// If neither encrypted value exists, clear the stored flag.
+		if ( empty( $new_input['aws_access_key_enc'] ) || empty( $new_input['aws_secret_key_enc'] ) ) {
+			unset( $new_input['aws_access_key_enc'], $new_input['aws_secret_key_enc'] );
+			unset( $new_input['credentials_stored'] );
 		}
 
 		return $new_input;
@@ -394,10 +596,19 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	 * @return void
 	 */
 	public function render_settings_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html( __( 'You do not have sufficient permissions to access this page.', 'cloudfront-cache-invalidator' ) ) );
+		}
 		?>
 		<div class="wrap">
 			<h1>CloudFront Cache Invalidator</h1>
-			
+
+			<?php if ( ! is_ssl() ) : ?>
+				<div class="notice notice-error">
+					<p><strong><?php esc_html_e( 'Warning:', 'cloudfront-cache-invalidator' ); ?></strong> <?php esc_html_e( 'You are not using HTTPS. AWS credentials will not be saved over HTTP. Please switch to HTTPS before entering access keys.', 'cloudfront-cache-invalidator' ); ?></p>
+				</div>
+			<?php endif; ?>
+
 			<div class="notice notice-info">
 				<p><strong>IAM Role Support:</strong> If your WordPress site is running on AWS (EC2, ECS, Elastic Beanstalk, etc.), you can use IAM roles for authentication instead of access keys. This is more secure and easier to manage.</p>
 				<p>To use this feature:</p>
@@ -422,7 +633,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	]
 	}</pre>
 			</div>
-			
+
 			<form method="post" action="options.php">
 				<?php
 				settings_fields( $this->settings_group );
@@ -438,7 +649,7 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 					<input type="submit" name="cloudfront_invalidate_all" class="button button-primary" value="Invalidate All CloudFront Cache">
 				</p>
 			</form>
-			
+
 			<?php
 			// Handle manual invalidation.
 			if ( isset( $_POST['cloudfront_invalidate_all'] ) && check_admin_referer( 'manual_invalidation', 'cloudfront_invalidation_nonce' ) ) {
@@ -637,15 +848,12 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 			// Use IAM role or keys based on settings.
 			$use_iam_role = isset( $this->settings['use_iam_role'] ) && '1' === $this->settings['use_iam_role'];
 
-			// Only add credentials if not using IAM role or if keys are provided as fallback.
-			if ( ! $use_iam_role &&
-				isset( $this->settings['aws_access_key'] ) && ! empty( $this->settings['aws_access_key'] ) &&
-				isset( $this->settings['aws_secret_key'] ) && ! empty( $this->settings['aws_secret_key'] )
-			) {
-				$config['credentials'] = array(
-					'key'    => $this->settings['aws_access_key'],
-					'secret' => $this->settings['aws_secret_key'],
-				);
+			// Only add credentials if not using IAM role and credentials are resolved.
+			if ( ! $use_iam_role ) {
+				$creds = $this->resolve_credentials();
+				if ( $creds && ! empty( $creds['key'] ) && ! empty( $creds['secret'] ) ) {
+					$config['credentials'] = $creds;
+				}
 			}
 
 			// Set up AWS CloudFront client.
@@ -671,13 +879,13 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 				)
 			);
 
-			// Log invalidation request.
-			error_log( 'CloudFront Invalidation Sent: ' . implode( ', ', $unique_paths ) );
+			// Expose a hook so sites can optionally log or monitor invalidations without using error_log().
+			do_action( 'notglossy_cloudfront_invalidation_sent', $unique_paths, $result );
 
 			return $result;
 
 		} catch ( Exception $e ) {
-			error_log( 'CloudFront Invalidation Error: ' . $e->getMessage() );
+			do_action( 'notglossy_cloudfront_invalidation_error', $e );
 			return new WP_Error( 'invalidation_failed', $e->getMessage() );
 		}
 	}

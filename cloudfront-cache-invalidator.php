@@ -13,7 +13,7 @@
  * Plugin Name: CloudFront Cache Invalidator
  * Plugin URI: https://github.com/notglossy/CloudFront-Cache-Invalidator
  * Description: Automatically invalidates CloudFront cache when WordPress content is updated.
- * Version: 1.0.1
+ * Version: 1.1.0
  * Author: Not Glossy LLC
  * Author URI: https://github.com/notglossy
  * License: GPL3
@@ -26,7 +26,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 if ( ! defined( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION' ) ) {
-	define( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION', '1.0.1' );
+	define( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION', '1.1.0' );
 }
 
 // Include AWS SDK via Composer autoloader.
