@@ -1052,6 +1052,71 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	}
 
 	/**
+	 * Validate and sanitize an array of invalidation paths for CloudFront API.
+	 *
+	 * Ensures paths meet CloudFront requirements:
+	 * - Must start with /
+	 * - Limited to 3000 paths per invalidation (AWS limit)
+	 * - Removes empty or invalid paths
+	 *
+	 * @since 1.1.1
+	 * @access private
+	 * @param array $paths Array of paths to validate.
+	 * @return array|WP_Error Validated paths array or WP_Error if validation fails.
+	 */
+	private function sanitize_invalidation_paths_array( $paths ) {
+		if ( ! is_array( $paths ) || empty( $paths ) ) {
+			return new WP_Error( 'invalid_paths', 'Invalidation paths must be a non-empty array.' );
+		}
+
+		$validated_paths = array();
+
+		foreach ( $paths as $path ) {
+			// Ensure path is a string.
+			if ( ! is_string( $path ) ) {
+				continue;
+			}
+
+			// Trim whitespace.
+			$path = trim( $path );
+
+			// Skip empty paths.
+			if ( '' === $path ) {
+				continue;
+			}
+
+			// CloudFront requires paths to start with /.
+			if ( '/' !== substr( $path, 0, 1 ) ) {
+				$path = '/' . $path;
+			}
+
+			// Add to validated list.
+			$validated_paths[] = $path;
+		}
+
+		// Check if we have any valid paths after validation.
+		if ( empty( $validated_paths ) ) {
+			return new WP_Error( 'no_valid_paths', 'No valid invalidation paths provided.' );
+		}
+
+		// Remove duplicates.
+		$validated_paths = array_unique( $validated_paths );
+
+		// AWS CloudFront limit is 3000 paths per invalidation request.
+		if ( count( $validated_paths ) > 3000 ) {
+			return new WP_Error(
+				'too_many_paths',
+				sprintf(
+					'CloudFront allows a maximum of 3000 paths per invalidation request. You provided %d paths.',
+					count( $validated_paths )
+				)
+			);
+		}
+
+		return $validated_paths;
+	}
+
+	/**
 	 * Send invalidation request to CloudFront.
 	 *
 	 * Creates and sends an invalidation request to the CloudFront API
@@ -1075,6 +1140,12 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 		// Check if distribution ID is configured.
 		if ( ! isset( $this->settings['distribution_id'] ) || empty( $this->settings['distribution_id'] ) ) {
 			return new WP_Error( 'settings_missing', 'CloudFront Distribution ID not configured.' );
+		}
+
+		// Validate and sanitize paths before sending to AWS API.
+		$validated_paths = $this->sanitize_invalidation_paths_array( $paths );
+		if ( is_wp_error( $validated_paths ) ) {
+			return $validated_paths;
 		}
 
 		try {
@@ -1101,9 +1172,6 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 			// Create a unique reference ID for this invalidation.
 			$caller_reference = 'wp-' . time() . '-' . wp_generate_password( 6, false );
 
-			// Make sure paths are unique and properly formatted.
-			$unique_paths = array_unique( $paths );
-
 			// Send invalidation request.
 			$result = $client->createInvalidation(
 				array(
@@ -1111,15 +1179,15 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 					'InvalidationBatch' => array(
 						'CallerReference' => $caller_reference,
 						'Paths'           => array(
-							'Quantity' => count( $unique_paths ),
-							'Items'    => $unique_paths,
+							'Quantity' => count( $validated_paths ),
+							'Items'    => $validated_paths,
 						),
 					),
 				)
 			);
 
 			// Expose a hook so sites can optionally log or monitor invalidations without using error_log().
-			do_action( 'notglossy_cloudfront_invalidation_sent', $unique_paths, $result );
+			do_action( 'notglossy_cloudfront_invalidation_sent', $validated_paths, $result );
 
 			return $result;
 
