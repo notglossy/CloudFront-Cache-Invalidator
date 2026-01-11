@@ -218,7 +218,8 @@ class SettingsValidationTest extends TestCase {
 	private function seed_settings( array $settings ): void {
 		$reflection = new ReflectionClass( $this->plugin );
 		$property   = $reflection->getProperty( 'settings' );
-		$property->setAccessible( true );
+		// Note: setAccessible() is no longer needed in PHP 8.1+, as private properties
+		// are accessible via reflection by default.
 		$property->setValue( $this->plugin, $settings );
 	}
 }
