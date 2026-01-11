@@ -6,13 +6,13 @@
  */
 
 return array(
-	'aws_credentials' => array(
+	'aws_credentials'          => array(
 		'access_key' => 'AKIAIOSFODNN7EXAMPLE',
 		'secret_key' => 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
 	),
 
-	'distribution_ids' => array(
-		'valid' => array(
+	'distribution_ids'         => array(
+		'valid'   => array(
 			'E1234567890AB',
 			'EABCDEFGHIJKL',
 			'E1A2B3C4D5E6F',
@@ -28,8 +28,8 @@ return array(
 		),
 	),
 
-	'aws_regions' => array(
-		'valid' => array(
+	'aws_regions'              => array(
+		'valid'   => array(
 			'us-east-1',
 			'us-east-2',
 			'us-west-1',
@@ -55,8 +55,8 @@ return array(
 		),
 	),
 
-	'invalidation_paths' => array(
-		'valid' => array(
+	'invalidation_paths'       => array(
+		'valid'           => array(
 			'/*',
 			'/blog/*',
 			'/images/logo.png',
@@ -64,30 +64,30 @@ return array(
 			'/wp-content/themes/theme-name/*',
 			'/page/about/',
 		),
-		'invalid' => array(
+		'invalid'         => array(
 			'blog/*',                 // Missing leading slash.
 			'images/logo.png',        // Missing leading slash.
 			'',                       // Empty.
 		),
-		'with_newlines' => "/*\n/blog/*\n/images/*",
+		'with_newlines'   => "/*\n/blog/*\n/images/*",
 		'with_whitespace' => "  /*  \n  /blog/*  \n  /images/*  ",
-		'mixed' => "/*\nblog/*\n/images/*\n\n/valid-path/",
+		'mixed'           => "/*\nblog/*\n/images/*\n\n/valid-path/",
 	),
 
-	'encryption_test_strings' => array(
-		'simple' => 'test-string',
+	'encryption_test_strings'  => array(
+		'simple'             => 'test-string',
 		'with_special_chars' => 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
-		'empty' => '',
-		'unicode' => 'Test with émojis 🔒 and üñïçödé',
-		'long' => str_repeat( 'a', 1000 ),
-		'json' => '{"key":"value","nested":{"foo":"bar"}}',
+		'empty'              => '',
+		'unicode'            => 'Test with émojis 🔒 and üñïçödé',
+		'long'               => str_repeat( 'a', 1000 ),
+		'json'               => '{"key":"value","nested":{"foo":"bar"}}',
 	),
 
 	'malformed_encrypted_data' => array(
-		'not_base64' => 'not-valid-base64!!!',
-		'invalid_format' => base64_encode( 'invalid' ),
+		'not_base64'      => 'not-valid-base64!!!',
+		'invalid_format'  => base64_encode( 'invalid' ),
 		'wrong_separator' => base64_encode( 'wrong' ) . '|' . base64_encode( 'separator' ),
-		'missing_iv' => base64_encode( 'data' ) . '::',
-		'empty' => '',
+		'missing_iv'      => base64_encode( 'data' ) . '::',
+		'empty'           => '',
 	),
 );

@@ -316,7 +316,7 @@ class PostUpdateInvalidationTest extends TestCase {
 					$tag2           = new stdClass();
 					$tag2->term_id  = 11;
 					$tag2->name     = 'WordPress';
-					$tag2->slug     = 'wordpress';
+					$tag2->slug     = 'WordPress';
 					$tag2->taxonomy = 'post_tag';
 
 					return array( $tag1, $tag2 );

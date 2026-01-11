@@ -45,7 +45,7 @@ if ( ! defined( 'NONCE_SALT' ) ) {
 // Mock WP_Error class for testing.
 if ( ! class_exists( 'WP_Error' ) ) {
 	class WP_Error {
-		private $errors = array();
+		private $errors     = array();
 		private $error_data = array();
 
 		public function __construct( $code = '', $message = '', $data = '' ) {
