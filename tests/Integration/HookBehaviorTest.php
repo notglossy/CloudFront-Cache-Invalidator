@@ -219,9 +219,9 @@ class HookBehaviorTest extends TestCase {
 			function ( $option ) {
 				if ( 'cloudfront_cache_invalidator_options' === $option ) {
 					return array(
-						'distribution_id'     => 'E1ABCDEFGHIJKL',
-						'aws_region'          => 'us-east-1',
-						'invalidation_paths'  => '/*',
+						'distribution_id'    => 'E1ABCDEFGHIJKL',
+						'aws_region'         => 'us-east-1',
+						'invalidation_paths' => '/*',
 					);
 				}
 				return false;
@@ -243,9 +243,9 @@ class HookBehaviorTest extends TestCase {
 			function ( $option ) {
 				if ( 'cloudfront_cache_invalidator_options' === $option ) {
 					return array(
-						'distribution_id'     => 'E1ABCDEFGHIJKL',
-						'aws_region'          => 'us-east-1',
-						'invalidation_paths'  => '/*',
+						'distribution_id'    => 'E1ABCDEFGHIJKL',
+						'aws_region'         => 'us-east-1',
+						'invalidation_paths' => '/*',
 					);
 				}
 				return false;
@@ -267,9 +267,9 @@ class HookBehaviorTest extends TestCase {
 			function ( $option ) {
 				if ( 'cloudfront_cache_invalidator_options' === $option ) {
 					return array(
-						'distribution_id'     => 'E1ABCDEFGHIJKL',
-						'aws_region'          => 'us-east-1',
-						'invalidation_paths'  => '/*',
+						'distribution_id'    => 'E1ABCDEFGHIJKL',
+						'aws_region'         => 'us-east-1',
+						'invalidation_paths' => '/*',
 					);
 				}
 				return false;
@@ -294,9 +294,9 @@ class HookBehaviorTest extends TestCase {
 			function ( $option ) {
 				if ( 'cloudfront_cache_invalidator_options' === $option ) {
 					return array(
-						'distribution_id'     => 'E1ABCDEFGHIJKL',
-						'aws_region'          => 'us-east-1',
-						'invalidation_paths'  => '/*',
+						'distribution_id'    => 'E1ABCDEFGHIJKL',
+						'aws_region'         => 'us-east-1',
+						'invalidation_paths' => '/*',
 					);
 				}
 				return false;

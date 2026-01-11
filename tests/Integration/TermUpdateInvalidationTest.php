@@ -221,7 +221,12 @@ class TermUpdateInvalidationTest extends TestCase {
 	 */
 	public function test_path_generation_defaults_to_root_when_no_path() {
 		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/' );
-		Functions\when( 'wp_parse_url' )->justReturn( array( 'scheme' => 'https', 'host' => 'example.com' ) );
+		Functions\when( 'wp_parse_url' )->justReturn(
+			array(
+				'scheme' => 'https',
+				'host'   => 'example.com',
+			)
+		);
 		Functions\when( 'is_wp_error' )->justReturn( false );
 
 		// Test execution - should default to / when no path is present.

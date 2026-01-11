@@ -222,4 +222,76 @@ class SettingsValidationTest extends TestCase {
 		// are accessible via reflection by default.
 		$property->setValue( $this->plugin, $settings );
 	}
+
+	public function test_http_submission_preserves_existing_credentials() {
+		Functions\when( 'is_ssl' )->justReturn( false );
+
+		$seed = array(
+			'aws_access_key_enc' => 'enc-access',
+			'aws_secret_key_enc' => 'enc-secret',
+			'credentials_stored' => true,
+		);
+		$this->seed_settings( $seed );
+
+		$input = array(
+			'use_iam_role'   => '0',
+			'aws_access_key' => 'NEWACCESS',
+			'aws_secret_key' => 'NEWSECRET',
+		);
+
+		$result = $this->plugin->validate_settings( $input );
+
+		$this->assertSame( $seed['aws_access_key_enc'], $result['aws_access_key_enc'], 'Existing access key should be preserved over HTTP' );
+		$this->assertSame( $seed['aws_secret_key_enc'], $result['aws_secret_key_enc'], 'Existing secret key should be preserved over HTTP' );
+		$this->assertTrue( $result['credentials_stored'], 'Stored flag should remain true' );
+		$this->assertNotEmpty( $this->settings_errors );
+		$this->assertSame( 'cloudfront_cache_invalidator_options', $this->settings_errors[0]['option'] );
+		$this->assertSame( 'cloudfront_https_required', $this->settings_errors[0]['code'] );
+	}
+
+	public function test_text_fields_are_sanitized_and_normalized() {
+		$this->seed_settings(
+			array(
+				'aws_region'      => 'us-east-1',
+				'distribution_id' => 'E1OLDVALUE12345',
+			)
+		);
+
+		$input = array(
+			'aws_region'      => ' EU-West-2 ',
+			'distribution_id' => ' e1234567890abc ',
+		);
+
+		$result = $this->plugin->validate_settings( $input );
+
+		$this->assertSame( 'eu-west-2', $result['aws_region'], 'Region should be trimmed, lowercased, and validated' );
+		$this->assertSame( 'E1234567890ABC', $result['distribution_id'], 'Distribution ID should be trimmed and uppercased' );
+	}
+
+	public function test_textarea_sanitization_and_validation() {
+		$this->seed_settings( array( 'invalidation_paths' => '/*' ) );
+
+		$input = array(
+			'invalidation_paths' => "  /*  \n  /blog/*  \n\n  /images/*  ",
+		);
+
+		$result = $this->plugin->validate_settings( $input );
+
+		$this->assertSame( "/*\n/blog/*\n/images/*", $result['invalidation_paths'], 'Textarea should be trimmed per line and preserved with newlines' );
+		$this->assertEmpty( $this->settings_errors, 'Valid paths should not trigger errors' );
+	}
+
+	public function test_invalid_textarea_paths_trigger_error_and_preserve_existing() {
+		$this->seed_settings( array( 'invalidation_paths' => '/*' ) );
+
+		$input = array(
+			'invalidation_paths' => "blog/*\n/images/*", // missing leading slashes
+		);
+
+		$result = $this->plugin->validate_settings( $input );
+
+		$this->assertSame( '/*', $result['invalidation_paths'], 'Existing value should be preserved on invalid input' );
+		$this->assertNotEmpty( $this->settings_errors );
+		$this->assertSame( 'invalid_invalidation_paths', $this->settings_errors[0]['code'] );
+	}
 }
