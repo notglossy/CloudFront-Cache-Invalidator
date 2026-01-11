@@ -3,7 +3,7 @@
 [![CI](https://github.com/notglossy/CloudFront-Cache-Invalidator/workflows/CI/badge.svg)](https://github.com/notglossy/CloudFront-Cache-Invalidator/actions)
 [![codecov](https://codecov.io/gh/notglossy/CloudFront-Cache-Invalidator/branch/main/graph/badge.svg)](https://codecov.io/gh/notglossy/CloudFront-Cache-Invalidator)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![PHP Version](https://img.shields.io/badge/PHP-7.4%2B-8892BF.svg)](https://php.net)
+[![PHP Version](https://img.shields.io/badge/PHP-8.1%2B-8892BF.svg)](https://php.net)
 
 A WordPress plugin that automatically invalidates Amazon CloudFront cache when content is updated on your website.
 
@@ -24,7 +24,7 @@ CloudFront Cache Invalidator helps WordPress site owners who use Amazon CloudFro
 ## Requirements
 
 - WordPress 5.0 or higher
-- PHP 7.2 or higher
+- PHP 8.1 or higher
 - AWS SDK for PHP (installed via Composer)
 - If using access keys: AWS account with CloudFront access
 - If using IAM roles: WordPress site hosted on AWS infrastructure with an appropriate IAM role
@@ -243,7 +243,7 @@ composer phpcbf && composer phpcs && composer test
 ### Continuous Integration
 
 GitHub Actions automatically runs tests on:
-- PHP 7.4, 8.0, 8.1, 8.2, 8.3
+- PHP 8.1, 8.2, 8.3, 8.4
 - PHPCS code style checks
 - PHPUnit tests
 - Security vulnerability scanning
