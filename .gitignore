@@ -58,9 +58,11 @@ Desktop.ini
 
 # Local automation configs
 .roo/
+.roomodes
 .openhands/
 .cache/
 .claude/
+.clauderc
 tmp/
 plans/
 CLAUDE.md
