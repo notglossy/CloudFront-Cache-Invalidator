@@ -47,6 +47,12 @@ class HookRegistrationTest extends TestCase {
 
 		// Create plugin instance which registers hooks in constructor.
 		$this->plugin = new NotGlossy_CloudFront_Cache_Invalidator();
+
+		// Ensure the test helper can still set legacy $settings via reflection.
+		$reflection = new ReflectionClass( $this->plugin );
+		$property   = $reflection->getProperty( 'settings' );
+		$property->setAccessible( true );
+		$property->setValue( $this->plugin, array() );
 	}
 
 	/**

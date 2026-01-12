@@ -29,11 +29,31 @@ if ( ! defined( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION' ) ) {
 	define( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION', '1.2.0' );
 }
 
-// Include AWS SDK via Composer autoloader.
-if ( file_exists( plugin_dir_path( __FILE__ ) . 'vendor/autoload.php' ) ) {
-	require plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
+// Include AWS SDK via Composer autoloader only if not already loaded by another plugin.
+$autoload_path = plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
+if ( ! class_exists( 'Aws\CloudFront\CloudFrontClient' ) ) {
+	if ( file_exists( $autoload_path ) ) {
+		require $autoload_path;
+	} else {
+		// Show admin notice if AWS SDK is missing and autoload cannot be found.
+		add_action(
+			'admin_notices',
+			function () {
+				echo '<div class="notice notice-error"><p>';
+				echo '<strong>' . esc_html__( 'CloudFront Cache Invalidator Error:', 'cloudfront-cache-invalidator' ) . '</strong> ';
+				echo esc_html__( 'AWS SDK for PHP is not installed. Please run "composer install" in the plugin directory to install dependencies.', 'cloudfront-cache-invalidator' );
+				echo '</p></div>';
+			}
+		);
+	}
 }
 
+require_once plugin_dir_path( __FILE__ ) . 'includes/class-notglossy-cloudfront-settings-manager.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/class-notglossy-cloudfront-credential-manager.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/class-notglossy-cloudfront-path-validator.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/class-notglossy-cloudfront-client.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/class-notglossy-cloudfront-invalidation-manager.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/class-notglossy-cloudfront-admin-interface.php';
 require_once plugin_dir_path( __FILE__ ) . 'includes/class-notglossy-cloudfront-cache-invalidator.php';
 
 // Initialize the plugin.

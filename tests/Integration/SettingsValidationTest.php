@@ -216,11 +216,20 @@ class SettingsValidationTest extends TestCase {
 	}
 
 	private function seed_settings( array $settings ): void {
-		$reflection = new ReflectionClass( $this->plugin );
-		$property   = $reflection->getProperty( 'settings' );
-		// Note: setAccessible() is no longer needed in PHP 8.1+, as private properties
-		// are accessible via reflection by default.
-		$property->setValue( $this->plugin, $settings );
+		// Update plugin's settings property.
+		$plugin_reflection = new ReflectionClass( $this->plugin );
+		$plugin_property   = $plugin_reflection->getProperty( 'settings' );
+		$plugin_property->setValue( $this->plugin, $settings );
+
+		// Also update settings_manager's current_settings so credential processing sees them.
+		$settings_manager_property = $plugin_reflection->getProperty( 'settings_manager' );
+		$settings_manager_property->setAccessible( true );
+		$settings_manager = $settings_manager_property->getValue( $this->plugin );
+
+		$sm_reflection = new ReflectionClass( $settings_manager );
+		$sm_property   = $sm_reflection->getProperty( 'current_settings' );
+		$sm_property->setAccessible( true );
+		$sm_property->setValue( $settings_manager, $settings );
 	}
 
 	public function test_http_submission_preserves_existing_credentials() {
