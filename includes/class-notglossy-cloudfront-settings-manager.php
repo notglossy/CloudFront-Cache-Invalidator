@@ -33,6 +33,18 @@ class NotGlossy_CloudFront_Settings_Manager {
 	private $credential_manager = null;
 
 	/**
+	 * Set the credential manager instance.
+	 *
+	 * @since 1.2.0
+	 * @access public
+	 * @param NotGlossy_CloudFront_Credential_Manager $credential_manager Credential manager instance.
+	 * @return void
+	 */
+	public function set_credential_manager( NotGlossy_CloudFront_Credential_Manager $credential_manager ) {
+		$this->credential_manager = $credential_manager;
+	}
+
+	/**
 	 * Cached settings for tests/injection.
 	 *
 	 * @since 1.2.0
@@ -512,16 +524,10 @@ class NotGlossy_CloudFront_Settings_Manager {
 		if ( ! $is_ssl && ( '' !== $submitted_access || '' !== $submitted_secret ) ) {
 			add_settings_error( $this->settings_option, 'cloudfront_https_required', __( 'AWS credentials cannot be saved over an insecure (HTTP) connection. Please use HTTPS.', 'cloudfront-cache-invalidator' ), 'error' );
 			// Do not modify stored credentials if submitted over HTTP.
-		} else {
-			// Access key handling.
-			if ( '' !== $submitted_access ) {
-				$new_input['aws_access_key'] = sanitize_text_field( $submitted_access );
-			}
-
-			// Secret key handling.
-			if ( '' !== $submitted_secret ) {
-				$new_input['aws_secret_key'] = sanitize_text_field( $submitted_secret );
-			}
+		} elseif ( null !== $this->credential_manager ) {
+			// Encrypt credentials via the credential manager — never store plaintext.
+			$credential_settings = $this->credential_manager->process_credential_submission( $input );
+			$new_input           = array_merge( $credential_settings, $new_input );
 		}
 
 		// Region validation.

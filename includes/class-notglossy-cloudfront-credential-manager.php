@@ -2,7 +2,7 @@
 /**
  * Credential Manager for CloudFront Cache Invalidator.
  *
- * Handles secure credential management including AES-256-CBC encryption,
+ * Handles secure credential management including libsodium authenticated encryption,
  * environment variable resolution, and IAM role vs access key logic.
  *
  * @since 1.2.0
@@ -22,15 +22,6 @@ if ( ! defined( 'ABSPATH' ) ) {
  * @since 1.2.0
  */
 class NotGlossy_CloudFront_Credential_Manager {
-
-	/**
-	 * Encryption cipher.
-	 *
-	 * @since 1.2.0
-	 * @access private
-	 * @var string CIPHER Encryption algorithm.
-	 */
-	const CIPHER = 'AES-256-CBC';
 
 	/**
 	 * Settings manager instance.
@@ -116,7 +107,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	}
 
 	/**
-	 * Encrypt a value using AES-256-CBC.
+	 * Encrypt a value using libsodium authenticated encryption.
 	 *
 	 * @since 1.2.0
 	 * @access private
@@ -128,18 +119,15 @@ class NotGlossy_CloudFront_Credential_Manager {
 			return false;
 		}
 
-		$key = $this->get_encryption_key();
-		$iv  = random_bytes( 16 );
+		$key   = $this->get_encryption_key();
+		$nonce = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
 
-		$ciphertext = openssl_encrypt( $plaintext, self::CIPHER, $key, OPENSSL_RAW_DATA, $iv );
-		if ( false === $ciphertext ) {
-			return false;
-		}
+		$ciphertext = sodium_crypto_secretbox( $plaintext, $nonce, $key );
 
 		// phpcs:disable WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Used for encryption, not obfuscation.
 		return wp_json_encode(
 			array(
-				'iv'    => base64_encode( $iv ),
+				'nonce' => base64_encode( $nonce ),
 				'value' => base64_encode( $ciphertext ),
 			)
 		);
@@ -148,6 +136,9 @@ class NotGlossy_CloudFront_Credential_Manager {
 
 	/**
 	 * Decrypt a value previously encrypted with encrypt_value().
+	 *
+	 * Supports both current libsodium payloads (nonce key) and legacy
+	 * AES-256-CBC payloads (iv key) for backwards compatibility.
 	 *
 	 * @since 1.2.0
 	 * @access private
@@ -160,10 +151,62 @@ class NotGlossy_CloudFront_Credential_Manager {
 		}
 
 		$data = json_decode( $encoded, true );
-		if ( ! is_array( $data ) || empty( $data['iv'] ) || empty( $data['value'] ) ) {
+		if ( ! is_array( $data ) || empty( $data['value'] ) ) {
 			return false;
 		}
 
+		// Current libsodium format (nonce key).
+		if ( ! empty( $data['nonce'] ) ) {
+			return $this->decrypt_sodium( $data );
+		}
+
+		// Legacy AES-256-CBC format (iv key).
+		if ( ! empty( $data['iv'] ) ) {
+			return $this->decrypt_legacy_cbc( $data );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Decrypt a libsodium authenticated encryption payload.
+	 *
+	 * @since 1.2.0
+	 * @access private
+	 * @param array $data Decoded JSON with nonce and value keys.
+	 * @return string|false Plaintext or false on failure.
+	 */
+	private function decrypt_sodium( $data ) {
+		// phpcs:disable WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Used for decryption, not obfuscation.
+		$nonce      = base64_decode( $data['nonce'], true );
+		$ciphertext = base64_decode( $data['value'], true );
+		// phpcs:enable WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode
+
+		if ( false === $nonce || false === $ciphertext ) {
+			return false;
+		}
+
+		try {
+			$plaintext = sodium_crypto_secretbox_open( $ciphertext, $nonce, $this->get_encryption_key() );
+		} catch ( SodiumException $e ) {
+			return false;
+		}
+
+		return false === $plaintext ? false : $plaintext;
+	}
+
+	/**
+	 * Decrypt a legacy AES-256-CBC payload.
+	 *
+	 * Retained for backwards compatibility with credentials encrypted before
+	 * the migration to libsodium. These will be re-encrypted on next save.
+	 *
+	 * @since 1.2.0
+	 * @access private
+	 * @param array $data Decoded JSON with iv and value keys.
+	 * @return string|false Plaintext or false on failure.
+	 */
+	private function decrypt_legacy_cbc( $data ) {
 		// phpcs:disable WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Used for decryption, not obfuscation.
 		$iv         = base64_decode( $data['iv'], true );
 		$ciphertext = base64_decode( $data['value'], true );
@@ -173,7 +216,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 			return false;
 		}
 
-		$plaintext = openssl_decrypt( $ciphertext, self::CIPHER, $this->get_encryption_key(), OPENSSL_RAW_DATA, $iv );
+		$plaintext = openssl_decrypt( $ciphertext, 'AES-256-CBC', $this->get_encryption_key(), OPENSSL_RAW_DATA, $iv );
 
 		return false === $plaintext ? false : $plaintext;
 	}

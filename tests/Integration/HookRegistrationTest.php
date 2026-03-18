@@ -51,7 +51,6 @@ class HookRegistrationTest extends TestCase {
 		// Ensure the test helper can still set legacy $settings via reflection.
 		$reflection = new ReflectionClass( $this->plugin );
 		$property   = $reflection->getProperty( 'settings' );
-		$property->setAccessible( true );
 		$property->setValue( $this->plugin, array() );
 	}
 

@@ -45,7 +45,6 @@ class AwsSdkMockingTest extends TestCase {
 		// Seed plugin settings via reflection.
 		$reflection = new ReflectionClass( $this->plugin );
 		$property   = $reflection->getProperty( 'settings' );
-		$property->setAccessible( true );
 		$property->setValue(
 			$this->plugin,
 			array(
@@ -90,18 +89,15 @@ class AwsSdkMockingTest extends TestCase {
 		// Update plugin's settings through reflection.
 		$plugin_reflection = new ReflectionClass( $this->plugin );
 		$plugin_property   = $plugin_reflection->getProperty( 'settings' );
-		$plugin_property->setAccessible( true );
 		$plugin_property->setValue( $this->plugin, array() );
 
 		// Also update settings_manager's current_settings so it doesn't use old values.
 		$settings_manager_reflection = new ReflectionClass( $this->plugin );
 		$settings_manager_property   = $settings_manager_reflection->getProperty( 'settings_manager' );
-		$settings_manager_property->setAccessible( true );
 		$settings_manager = $settings_manager_property->getValue( $this->plugin );
 
 		$sm_reflection = new ReflectionClass( $settings_manager );
 		$sm_property   = $sm_reflection->getProperty( 'current_settings' );
-		$sm_property->setAccessible( true );
 		$sm_property->setValue( $settings_manager, array() );
 
 		$result = $this->plugin->send_invalidation_request( array( '/*' ) );

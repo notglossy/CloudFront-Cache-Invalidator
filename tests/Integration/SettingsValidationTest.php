@@ -223,12 +223,10 @@ class SettingsValidationTest extends TestCase {
 
 		// Also update settings_manager's current_settings so credential processing sees them.
 		$settings_manager_property = $plugin_reflection->getProperty( 'settings_manager' );
-		$settings_manager_property->setAccessible( true );
 		$settings_manager = $settings_manager_property->getValue( $this->plugin );
 
 		$sm_reflection = new ReflectionClass( $settings_manager );
 		$sm_property   = $sm_reflection->getProperty( 'current_settings' );
-		$sm_property->setAccessible( true );
 		$sm_property->setValue( $settings_manager, $settings );
 	}
 

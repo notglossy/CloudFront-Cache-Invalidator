@@ -187,16 +187,16 @@ class EncryptionTest extends TestCase {
 
 		$data = json_decode( $encrypted, true );
 		$this->assertIsArray( $data, 'Encrypted output should be a valid JSON object' );
-		$this->assertArrayHasKey( 'iv', $data, 'Encrypted output should have an iv key' );
+		$this->assertArrayHasKey( 'nonce', $data, 'Encrypted output should have a nonce key' );
 		$this->assertArrayHasKey( 'value', $data, 'Encrypted output should have a value key' );
-		$this->assertNotEmpty( $data['iv'], 'IV should not be empty' );
+		$this->assertNotEmpty( $data['nonce'], 'Nonce should not be empty' );
 		$this->assertNotEmpty( $data['value'], 'Value should not be empty' );
 	}
 
 	/**
-	 * Test that IV is random and different each time.
+	 * Test that nonce is random and different each time.
 	 */
-	public function test_iv_is_random() {
+	public function test_nonce_is_random() {
 		$plaintext = 'test';
 
 		$encrypted1 = $this->call_private_method( $this->plugin, 'encrypt_value', array( $plaintext ) );
@@ -205,7 +205,7 @@ class EncryptionTest extends TestCase {
 		$data1 = json_decode( $encrypted1, true );
 		$data2 = json_decode( $encrypted2, true );
 
-		$this->assertNotEquals( $data1['iv'], $data2['iv'], 'IV should be different for each encryption' );
+		$this->assertNotEquals( $data1['nonce'], $data2['nonce'], 'Nonce should be different for each encryption' );
 	}
 
 	/**

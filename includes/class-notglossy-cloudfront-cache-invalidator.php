@@ -89,8 +89,9 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	 * Constructor sets up all components and registers hooks.
 	 */
 	public function __construct() {
-		$this->settings_manager     = new NotGlossy_CloudFront_Settings_Manager();
-		$this->credential_manager   = new NotGlossy_CloudFront_Credential_Manager( $this->settings_manager );
+		$this->settings_manager   = new NotGlossy_CloudFront_Settings_Manager();
+		$this->credential_manager = new NotGlossy_CloudFront_Credential_Manager( $this->settings_manager );
+		$this->settings_manager->set_credential_manager( $this->credential_manager );
 		$this->path_validator       = new NotGlossy_CloudFront_Path_Validator();
 		$this->cloudfront_client    = new NotGlossy_CloudFront_Client( $this->settings_manager, $this->credential_manager, $this->path_validator );
 		$this->invalidation_manager = new NotGlossy_CloudFront_Invalidation_Manager( $this->settings_manager, $this->cloudfront_client );
@@ -271,28 +272,28 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	private function get_encryption_key() {
 		$reflector = new ReflectionClass( $this->credential_manager );
 		$method    = $reflector->getMethod( 'get_encryption_key' );
-		$method->setAccessible( true );
+
 		return $method->invoke( $this->credential_manager );
 	}
 
 	private function encrypt_value( $plaintext ) {
 		$reflector = new ReflectionClass( $this->credential_manager );
 		$method    = $reflector->getMethod( 'encrypt_value' );
-		$method->setAccessible( true );
+
 		return $method->invoke( $this->credential_manager, $plaintext );
 	}
 
 	private function decrypt_value( $encoded ) {
 		$reflector = new ReflectionClass( $this->credential_manager );
 		$method    = $reflector->getMethod( 'decrypt_value' );
-		$method->setAccessible( true );
+
 		return $method->invoke( $this->credential_manager, $encoded );
 	}
 
 	private function get_env_or_option( $constant_name, $env_name, $option_key ) {
 		$reflector = new ReflectionClass( $this->credential_manager );
 		$method    = $reflector->getMethod( 'get_env_or_option' );
-		$method->setAccessible( true );
+
 		return $method->invoke( $this->credential_manager, $constant_name, $env_name, $option_key );
 	}
 
@@ -303,21 +304,21 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	private function validate_aws_region( $region ) {
 		$reflector = new ReflectionClass( $this->settings_manager );
 		$method    = $reflector->getMethod( 'validate_aws_region' );
-		$method->setAccessible( true );
+
 		return $method->invoke( $this->settings_manager, $region );
 	}
 
 	private function validate_distribution_id( $distribution_id ) {
 		$reflector = new ReflectionClass( $this->settings_manager );
 		$method    = $reflector->getMethod( 'validate_distribution_id' );
-		$method->setAccessible( true );
+
 		return $method->invoke( $this->settings_manager, $distribution_id );
 	}
 
 	private function validate_invalidation_paths( $paths ) {
 		$reflector = new ReflectionClass( $this->settings_manager );
 		$method    = $reflector->getMethod( 'validate_invalidation_paths' );
-		$method->setAccessible( true );
+
 		return $method->invoke( $this->settings_manager, $paths );
 	}
 
