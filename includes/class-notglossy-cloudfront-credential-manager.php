@@ -103,7 +103,12 @@ class NotGlossy_CloudFront_Credential_Manager {
 			$parts[] = wp_salt( 'auth' );
 		}
 
-		return hash( 'sha256', implode( '', $parts ), true );
+		return hash_hkdf(
+			'sha256',
+			implode( '|', $parts ),
+			SODIUM_CRYPTO_SECRETBOX_KEYBYTES,
+			'cloudfront-cache-invalidator-encryption'
+		);
 	}
 
 	/**
