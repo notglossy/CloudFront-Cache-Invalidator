@@ -116,34 +116,8 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	 * @return void
 	 */
 	public function register_hooks() {
-		// Content update hooks (delegate to invalidation manager).
-		add_action( 'save_post', array( $this, 'invalidate_on_post_update' ), 10, 3 );
-		add_action( 'deleted_post', array( $this, 'invalidate_on_post_delete' ) );
-
-		// Theme and customizer hooks.
-		add_action( 'switch_theme', array( $this, 'invalidate_all' ) );
-		add_action( 'customize_save_after', array( $this, 'invalidate_all' ) );
-		add_action( 'update_option_permalink_structure', array( $this, 'invalidate_all' ) );
-
-		// Plugin activation/deactivation hooks.
-		add_action( 'activated_plugin', array( $this, 'invalidate_all' ) );
-		add_action( 'deactivated_plugin', array( $this, 'invalidate_all' ) );
-
-		// Menu and widget hooks.
-		add_action( 'wp_update_nav_menu', array( $this, 'invalidate_all' ) );
-		add_action( 'update_option_sidebars_widgets', array( $this, 'invalidate_all' ) );
-
-		// Term hooks.
-		add_action( 'edited_term', array( $this, 'invalidate_on_term_update' ), 10, 3 );
-
-		// Admin hooks.
-		add_action( 'admin_init', array( $this, 'register_settings' ) );
-		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
-		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
-
-		// Manual invalidation hooks.
-		add_action( 'admin_post_cloudfront_invalidate_all', array( $this, 'handle_manual_invalidation' ) );
-		add_action( 'admin_notices', array( $this, 'display_invalidation_notices' ) );
+		$this->invalidation_manager->register_hooks();
+		$this->admin_interface->register_hooks();
 	}
 
 	/* -------------------------------------------------------------
