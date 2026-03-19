@@ -102,7 +102,7 @@ class NotGlossy_CloudFront_Client {
 		try {
 			// Set up AWS CloudFront client config.
 			$config = array(
-				'Version' => 'latest',
+				'version' => 'latest',
 				'region'  => $this->credential_manager->get_aws_region(),
 			);
 
