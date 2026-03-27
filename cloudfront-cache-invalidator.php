@@ -29,6 +29,21 @@ if ( ! defined( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION' ) ) {
 	define( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION', '1.2.0' );
 }
 
+/**
+ * Display admin notice when AWS SDK is missing.
+ *
+ * Defined as a named function instead of a closure to avoid serialization
+ * fatal errors when a persistent object cache (e.g. APCu) is active.
+ *
+ * @since 1.2.1
+ */
+function notglossy_cloudfront_sdk_missing_notice() {
+	echo '<div class="notice notice-error"><p>';
+	echo '<strong>' . esc_html__( 'CloudFront Cache Invalidator Error:', 'cloudfront-cache-invalidator' ) . '</strong> ';
+	echo esc_html__( 'AWS SDK for PHP is not installed. Please run "composer install" in the plugin directory to install dependencies.', 'cloudfront-cache-invalidator' );
+	echo '</p></div>';
+}
+
 // Include AWS SDK via Composer autoloader only if not already loaded by another plugin.
 $autoload_path = plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
 if ( ! class_exists( 'Aws\CloudFront\CloudFrontClient' ) ) {
@@ -36,15 +51,7 @@ if ( ! class_exists( 'Aws\CloudFront\CloudFrontClient' ) ) {
 		require $autoload_path;
 	} else {
 		// Show admin notice if AWS SDK is missing and autoload cannot be found.
-		add_action(
-			'admin_notices',
-			function () {
-				echo '<div class="notice notice-error"><p>';
-				echo '<strong>' . esc_html__( 'CloudFront Cache Invalidator Error:', 'cloudfront-cache-invalidator' ) . '</strong> ';
-				echo esc_html__( 'AWS SDK for PHP is not installed. Please run "composer install" in the plugin directory to install dependencies.', 'cloudfront-cache-invalidator' );
-				echo '</p></div>';
-			}
-		);
+		add_action( 'admin_notices', 'notglossy_cloudfront_sdk_missing_notice' );
 	}
 }
 
