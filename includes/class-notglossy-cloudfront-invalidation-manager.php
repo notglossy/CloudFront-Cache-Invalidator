@@ -116,7 +116,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 		$paths = array( $path, $path . '*' );
 
 		// If it's a front page or posts page, also invalidate root.
-		if ( 'page' === $post->post_type && ( get_option( 'page_on_front' ) === $post_id || get_option( 'page_for_posts' ) === $post_id ) ) {
+		if ( 'page' === $post->post_type && ( (int) get_option( 'page_on_front' ) === $post_id || (int) get_option( 'page_for_posts' ) === $post_id ) ) {
 			$paths[] = '/';
 			$paths[] = '/*';
 		}

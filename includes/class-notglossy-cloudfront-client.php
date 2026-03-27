@@ -142,7 +142,7 @@ class NotGlossy_CloudFront_Client {
 
 			return $result;
 
-		} catch ( Exception $e ) {
+		} catch ( \Throwable $e ) {
 			do_action( 'notglossy_cloudfront_invalidation_error', $e );
 			return new WP_Error( 'invalidation_failed', $e->getMessage() );
 		}
