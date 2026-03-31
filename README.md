@@ -361,7 +361,8 @@ Developed by Not Glossy, LLC
 ## Changelog
 
 ### 1.3.0
-- Upgraded aws/aws-sdk-php to ^3.371.4 (resolves to 3.375.0)
+- **Security:** Upgraded aws/aws-sdk-php to ^3.371.4 to fix GHSA-27qh-8cxx-2cr5
+
 
 ### 1.2.0
 - Added comprehensive input validation for AWS regions, distribution IDs, and invalidation paths
