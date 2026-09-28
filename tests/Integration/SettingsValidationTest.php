@@ -1,9 +1,14 @@
 <?php
 /**
- * Integration-style tests for validate_settings() behavior.
+ * Tests for the sanitize callback registered with register_setting().
  *
- * Focus: HTTPS enforcement, credential encryption/preservation, plaintext stripping,
- * IAM role toggle, validation error handling, and fallbacks.
+ * These exercise NotGlossy_CloudFront_Settings_Manager::validate_settings()
+ * directly, which is the callable WordPress actually runs on save, and
+ * simulate the way WordPress calls it: with the stored option available via
+ * get_option(), and twice on the very first save (update_option() falls
+ * through to add_option(), which sanitizes the already-sanitized value again).
+ *
+ * @package CloudFrontCacheInvalidator
  */
 
 use PHPUnit\Framework\TestCase;
@@ -12,11 +17,25 @@ use Brain\Monkey\Functions;
 
 class SettingsValidationTest extends TestCase {
 	/**
-	 * Plugin instance under test.
+	 * Settings manager under test (owns the registered sanitize callback).
 	 *
-	 * @var NotGlossy_CloudFront_Cache_Invalidator
+	 * @var NotGlossy_CloudFront_Settings_Manager
 	 */
-	private $plugin;
+	private $settings_manager;
+
+	/**
+	 * Credential manager attached to the settings manager.
+	 *
+	 * @var NotGlossy_CloudFront_Credential_Manager
+	 */
+	private $credential_manager;
+
+	/**
+	 * Value get_option() returns for the plugin option ("the database").
+	 *
+	 * @var mixed
+	 */
+	private $stored;
 
 	/**
 	 * Collected settings errors (simulating add_settings_error/get_settings_errors).
@@ -30,41 +49,41 @@ class SettingsValidationTest extends TestCase {
 		Monkey\setUp();
 
 		$this->settings_errors = array();
+		$this->stored          = array();
 
-		// Basic WP function shims.
 		Functions\when( '__' )->returnArg( 1 );
 		Functions\when( 'esc_html' )->returnArg( 1 );
 		Functions\when( 'esc_html__' )->returnArg( 1 );
+		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
 		Functions\when( 'sanitize_text_field' )->alias(
 			function ( $value ) {
 				return is_string( $value ) ? trim( $value ) : '';
 			}
 		);
-
 		Functions\when( 'sanitize_textarea_field' )->alias(
 			function ( $value ) {
 				if ( ! is_string( $value ) ) {
 					return '';
 				}
-				// Trim each line; preserve newlines.
 				$lines = array_map( 'trim', explode( "\n", $value ) );
 				return implode( "\n", $lines );
 			}
 		);
-
-		Functions\when( 'get_option' )->justReturn( array() );
-
+		Functions\when( 'get_option' )->alias(
+			function ( $name, $fallback = false ) {
+				return 'cloudfront_cache_invalidator_options' === $name ? $this->stored : $fallback;
+			}
+		);
 		Functions\when( 'add_settings_error' )->alias(
 			function ( $option, $code, $message, $type = 'error' ) {
 				$this->settings_errors[] = compact( 'option', 'code', 'message', 'type' );
 			}
 		);
-
-		// Default to HTTPS; individual tests can override.
 		Functions\when( 'is_ssl' )->justReturn( true );
 
-		// Instantiate plugin.
-		$this->plugin = new NotGlossy_CloudFront_Cache_Invalidator();
+		$this->settings_manager   = new NotGlossy_CloudFront_Settings_Manager();
+		$this->credential_manager = new NotGlossy_CloudFront_Credential_Manager( $this->settings_manager );
+		$this->settings_manager->set_credential_manager( $this->credential_manager );
 	}
 
 	protected function tearDown(): void {
@@ -72,233 +91,434 @@ class SettingsValidationTest extends TestCase {
 		parent::tearDown();
 	}
 
-	public function test_https_blocks_plaintext_credentials_on_http() {
-		Functions\when( 'is_ssl' )->justReturn( false );
-		$this->seed_settings( array() );
+	/**
+	 * Run the sanitize callback exactly as WordPress does.
+	 *
+	 * @param array $input     Submitted form data.
+	 * @param bool  $first_save Simulate the add_option() double run.
+	 * @return array
+	 */
+	private function sanitize( array $input, bool $first_save = false ): array {
+		$result = $this->settings_manager->validate_settings( $input );
+		if ( $first_save ) {
+			$result = $this->settings_manager->validate_settings( $result );
+		}
+		return $result;
+	}
 
-		$input = array(
-			'use_iam_role'   => '0',
-			'aws_access_key' => 'AKIA123',
-			'aws_secret_key' => 'SECRET123',
+	private function decrypt( string $payload ) {
+		$method = ( new ReflectionClass( $this->credential_manager ) )->getMethod( 'decrypt_value' );
+		return $method->invoke( $this->credential_manager, $payload );
+	}
+
+	private function encrypt( string $plaintext ): string {
+		$method = ( new ReflectionClass( $this->credential_manager ) )->getMethod( 'encrypt_value' );
+		return $method->invoke( $this->credential_manager, $plaintext );
+	}
+
+	private function error_codes(): array {
+		return array_column( $this->settings_errors, 'code' );
+	}
+
+	private function form( array $overrides = array() ): array {
+		return array_merge(
+			array(
+				'aws_access_key'     => '',
+				'aws_secret_key'     => '',
+				'aws_region'         => 'us-east-1',
+				'distribution_id'    => 'E1234567890AB',
+				'invalidation_paths' => '/*',
+			),
+			$overrides
+		);
+	}
+
+	/* ---------------------------------------------------------------
+	 * Registration
+	 * ------------------------------------------------------------- */
+
+	public function test_register_setting_uses_settings_manager_callback() {
+		$registered = null;
+		Functions\when( 'register_setting' )->alias(
+			function ( $group, $option, $args ) use ( &$registered ) {
+				$registered = compact( 'group', 'option', 'args' );
+			}
+		);
+		Functions\when( 'add_settings_section' )->justReturn( null );
+		Functions\when( 'add_settings_field' )->justReturn( null );
+
+		$this->settings_manager->register_settings();
+
+		$this->assertSame( 'cloudfront_cache_invalidator_options', $registered['option'] );
+		$this->assertSame( array( $this->settings_manager, 'validate_settings' ), $registered['args'], 'The tests below must exercise the callable WordPress actually runs' );
+	}
+
+	/* ---------------------------------------------------------------
+	 * First save (double sanitize)
+	 * ------------------------------------------------------------- */
+
+	public function test_first_save_keeps_credentials_and_iam_off() {
+		$this->stored = false; // Option does not exist yet.
+
+		$result = $this->sanitize(
+			$this->form(
+				array(
+					'aws_access_key' => 'AKIAIOSFODNN7EXAMPLE',
+					'aws_secret_key' => 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+				)
+			),
+			true
 		);
 
-		$result = $this->plugin->validate_settings( $input );
+		$this->assertSame( '0', $result['use_iam_role'], 'Unchecked checkbox must stay off after the second sanitize pass' );
+		$this->assertTrue( $result['credentials_stored'] );
+		$this->assertSame( 'AKIAIOSFODNN7EXAMPLE', $this->decrypt( $result['aws_access_key_enc'] ) );
+		$this->assertSame( 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', $this->decrypt( $result['aws_secret_key_enc'] ) );
+		$this->assertArrayNotHasKey( 'aws_access_key', $result );
+		$this->assertArrayNotHasKey( 'aws_secret_key', $result );
+		$this->assertSame( 'E1234567890AB', $result['distribution_id'] );
+		$this->assertEmpty( $this->settings_errors );
+	}
+
+	public function test_first_save_with_iam_checked_keeps_it_on() {
+		$this->stored = false;
+
+		$result = $this->sanitize( $this->form( array( 'use_iam_role' => '1' ) ), true );
+
+		$this->assertSame( '1', $result['use_iam_role'] );
+	}
+
+	public function test_posted_ciphertext_is_not_trusted() {
+		$stored_access = $this->encrypt( 'AKIASTOREDSTOREDSTO1' );
+		$stored_secret = $this->encrypt( 'storedstoredstoredstoredstoredstoredsto1' );
+		$this->stored  = array(
+			'aws_access_key_enc' => $stored_access,
+			'aws_secret_key_enc' => $stored_secret,
+			'credentials_stored' => true,
+		);
+
+		// Well-formed ciphertext injected into the form must not replace the stored pair.
+		$result = $this->sanitize(
+			$this->form(
+				array(
+					'aws_access_key_enc' => $this->encrypt( 'AKIAINJECTEDINJECTE1' ),
+					'aws_secret_key_enc' => $this->encrypt( 'injectedinjectedinjectedinjectedinject1' ),
+				)
+			)
+		);
+
+		$this->assertSame( $stored_access, $result['aws_access_key_enc'] );
+		$this->assertSame( $stored_secret, $result['aws_secret_key_enc'] );
+	}
+
+	public function test_sanitizer_is_a_fixed_point_on_its_own_output() {
+		$this->stored = array();
+
+		$once  = $this->sanitize(
+			$this->form(
+				array(
+					'aws_access_key' => 'AKIAIOSFODNN7EXAMPLE',
+					'aws_secret_key' => 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+				)
+			)
+		);
+		$twice = $this->sanitize( $once );
+
+		$this->assertSame( $once, $twice );
+	}
+
+	/* ---------------------------------------------------------------
+	 * Rotation, preservation and removal
+	 * ------------------------------------------------------------- */
+
+	public function test_new_keys_replace_stored_keys() {
+		$this->stored = array(
+			'aws_access_key_enc' => $this->encrypt( 'AKIAOLDOLDOLDOLDOLD1' ),
+			'aws_secret_key_enc' => $this->encrypt( 'oldoldoldoldoldoldoldoldoldoldoldoldold1' ),
+			'credentials_stored' => true,
+			'distribution_id'    => 'E1234567890AB',
+		);
+
+		$result = $this->sanitize(
+			$this->form(
+				array(
+					'aws_access_key' => 'AKIANEWNEWNEWNEWNEW1',
+					'aws_secret_key' => 'newnewnewnewnewnewnewnewnewnewnewnewnew1',
+				)
+			)
+		);
+
+		$this->assertSame( 'AKIANEWNEWNEWNEWNEW1', $this->decrypt( $result['aws_access_key_enc'] ) );
+		$this->assertSame( 'newnewnewnewnewnewnewnewnewnewnewnewnew1', $this->decrypt( $result['aws_secret_key_enc'] ) );
+		$this->assertEmpty( $this->settings_errors );
+	}
+
+	public function test_blank_fields_preserve_stored_keys() {
+		$this->stored = array(
+			'aws_access_key_enc' => 'enc-access',
+			'aws_secret_key_enc' => 'enc-secret',
+			'credentials_stored' => true,
+		);
+
+		$result = $this->sanitize( $this->form() );
+
+		$this->assertSame( 'enc-access', $result['aws_access_key_enc'] );
+		$this->assertSame( 'enc-secret', $result['aws_secret_key_enc'] );
+		$this->assertTrue( $result['credentials_stored'] );
+		$this->assertEmpty( $this->settings_errors );
+	}
+
+	public function test_clear_credentials_removes_stored_keys() {
+		$this->stored = array(
+			'aws_access_key_enc' => 'enc-access',
+			'aws_secret_key_enc' => 'enc-secret',
+			'credentials_stored' => true,
+			'distribution_id'    => 'E1234567890AB',
+		);
+
+		$result = $this->sanitize( $this->form( array( 'clear_credentials' => '1' ) ) );
 
 		$this->assertArrayNotHasKey( 'aws_access_key_enc', $result );
 		$this->assertArrayNotHasKey( 'aws_secret_key_enc', $result );
 		$this->assertArrayNotHasKey( 'credentials_stored', $result );
-		$this->assertNotEmpty( $this->settings_errors );
-		$this->assertSame( 'cloudfront_cache_invalidator_options', $this->settings_errors[0]['option'] );
-		$this->assertSame( 'cloudfront_https_required', $this->settings_errors[0]['code'] );
+		$this->assertSame( 'E1234567890AB', $result['distribution_id'], 'Other settings are untouched' );
 	}
 
-	public function test_https_allows_encrypting_credentials() {
-		Functions\when( 'is_ssl' )->justReturn( true );
-		$this->seed_settings( array() );
-
-		$input = array(
-			'use_iam_role'   => '0',
-			'aws_access_key' => 'AKIA123',
-			'aws_secret_key' => 'SECRET123',
+	public function test_half_submitted_pair_is_rejected_and_stored_pair_kept() {
+		$this->stored = array(
+			'aws_access_key_enc' => 'enc-access',
+			'aws_secret_key_enc' => 'enc-secret',
+			'credentials_stored' => true,
 		);
 
-		$result = $this->plugin->validate_settings( $input );
+		$result = $this->sanitize( $this->form( array( 'aws_access_key' => 'AKIANEWNEWNEWNEWNEW1' ) ) );
 
-		$this->assertArrayHasKey( 'aws_access_key_enc', $result );
-		$this->assertArrayHasKey( 'aws_secret_key_enc', $result );
-		$this->assertEquals( '1', $result['credentials_stored'] );
+		$this->assertSame( 'enc-access', $result['aws_access_key_enc'] );
+		$this->assertSame( 'enc-secret', $result['aws_secret_key_enc'] );
+		$this->assertContains( 'cloudfront_credentials_incomplete', $this->error_codes() );
+	}
+
+	public function test_half_submitted_pair_with_nothing_stored_stores_nothing() {
+		$this->stored = array();
+
+		$result = $this->sanitize( $this->form( array( 'aws_secret_key' => 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY' ) ) );
+
+		$this->assertArrayNotHasKey( 'aws_access_key_enc', $result );
+		$this->assertArrayNotHasKey( 'aws_secret_key_enc', $result );
+		$this->assertArrayNotHasKey( 'credentials_stored', $result );
+		$this->assertContains( 'cloudfront_credentials_incomplete', $this->error_codes() );
+	}
+
+	public function test_stale_half_pair_in_storage_is_dropped() {
+		$this->stored = array(
+			'aws_access_key_enc' => 'only-access',
+			'credentials_stored' => true,
+		);
+
+		$result = $this->sanitize( $this->form() );
+
+		$this->assertArrayNotHasKey( 'aws_access_key_enc', $result );
+		$this->assertArrayNotHasKey( 'credentials_stored', $result );
+	}
+
+	public function test_invalid_key_formats_are_rejected() {
+		$this->stored = array();
+
+		$result = $this->sanitize(
+			$this->form(
+				array(
+					'aws_access_key' => 'not a key',
+					'aws_secret_key' => 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+				)
+			)
+		);
+
+		$this->assertArrayNotHasKey( 'aws_access_key_enc', $result );
+		$this->assertContains( 'cloudfront_invalid_access_key', $this->error_codes() );
+	}
+
+	public function test_array_valued_credential_fields_do_not_fatal() {
+		$this->stored = array();
+
+		$result = $this->sanitize(
+			$this->form(
+				array(
+					'aws_access_key'  => array( 'x' ),
+					'aws_secret_key'  => array( 'y' ),
+					'aws_region'      => array( 'z' ),
+					'distribution_id' => array( 'w' ),
+				)
+			)
+		);
+
+		$this->assertArrayNotHasKey( 'aws_access_key_enc', $result );
+		$this->assertSame( 'us-east-1', $result['aws_region'] );
+		$this->assertSame( '', $result['distribution_id'] );
+	}
+
+	public function test_plaintext_keys_never_survive_sanitization() {
+		$this->stored = array(
+			'aws_access_key' => 'AKIALEGACYPLAINTEXT1',
+			'aws_secret_key' => 'legacyplaintextsecretlegacyplaintextsec1',
+		);
+
+		$result = $this->sanitize( $this->form() );
+
 		$this->assertArrayNotHasKey( 'aws_access_key', $result );
 		$this->assertArrayNotHasKey( 'aws_secret_key', $result );
 	}
 
-	public function test_blank_submission_preserves_existing_encrypted_credentials() {
-		$seed = array(
+	/* ---------------------------------------------------------------
+	 * HTTPS
+	 * ------------------------------------------------------------- */
+
+	public function test_https_blocks_plaintext_credentials_on_http() {
+		Functions\when( 'is_ssl' )->justReturn( false );
+		$this->stored = array();
+
+		$result = $this->sanitize(
+			$this->form(
+				array(
+					'aws_access_key' => 'AKIAIOSFODNN7EXAMPLE',
+					'aws_secret_key' => 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+				)
+			)
+		);
+
+		$this->assertArrayNotHasKey( 'aws_access_key_enc', $result );
+		$this->assertArrayNotHasKey( 'aws_secret_key_enc', $result );
+		$this->assertArrayNotHasKey( 'credentials_stored', $result );
+		$this->assertSame( 'cloudfront_cache_invalidator_options', $this->settings_errors[0]['option'] );
+		$this->assertSame( 'cloudfront_https_required', $this->settings_errors[0]['code'] );
+	}
+
+	public function test_http_submission_preserves_existing_credentials() {
+		Functions\when( 'is_ssl' )->justReturn( false );
+		$this->stored = array(
 			'aws_access_key_enc' => 'enc-access',
 			'aws_secret_key_enc' => 'enc-secret',
 			'credentials_stored' => true,
 		);
-		$this->seed_settings( $seed );
 
-		$input  = array( 'use_iam_role' => '0' );
-		$result = $this->plugin->validate_settings( $input );
+		$result = $this->sanitize(
+			$this->form(
+				array(
+					'aws_access_key' => 'AKIANEWNEWNEWNEWNEW1',
+					'aws_secret_key' => 'newnewnewnewnewnewnewnewnewnewnewnewnew1',
+				)
+			)
+		);
 
-		$this->assertSame( $seed['aws_access_key_enc'], $result['aws_access_key_enc'] );
-		$this->assertSame( $seed['aws_secret_key_enc'], $result['aws_secret_key_enc'] );
+		$this->assertSame( 'enc-access', $result['aws_access_key_enc'] );
+		$this->assertSame( 'enc-secret', $result['aws_secret_key_enc'] );
 		$this->assertTrue( $result['credentials_stored'] );
+		$this->assertSame( 'cloudfront_https_required', $this->settings_errors[0]['code'] );
 	}
+
+	/* ---------------------------------------------------------------
+	 * IAM checkbox
+	 * ------------------------------------------------------------- */
 
 	public function test_iam_role_checkbox_toggles_and_does_not_clear_creds() {
-		$seed = array(
+		$this->stored = array(
 			'aws_access_key_enc' => 'enc-access',
 			'aws_secret_key_enc' => 'enc-secret',
 			'credentials_stored' => true,
 		);
-		$this->seed_settings( $seed );
 
-		// Checkbox checked
-		$result_checked = $this->plugin->validate_settings( array( 'use_iam_role' => '1' ) );
-		$this->assertSame( '1', $result_checked['use_iam_role'] );
-		$this->assertSame( 'enc-access', $result_checked['aws_access_key_enc'] );
-		$this->assertSame( 'enc-secret', $result_checked['aws_secret_key_enc'] );
+		$checked = $this->sanitize( array( 'use_iam_role' => '1' ) );
+		$this->assertSame( '1', $checked['use_iam_role'] );
+		$this->assertSame( 'enc-access', $checked['aws_access_key_enc'] );
+		$this->assertSame( 'enc-secret', $checked['aws_secret_key_enc'] );
 
-		// Checkbox absent
-		$result_unchecked = $this->plugin->validate_settings( array() );
-		$this->assertSame( '0', $result_unchecked['use_iam_role'] );
+		$unchecked = $this->sanitize( array() );
+		$this->assertSame( '0', $unchecked['use_iam_role'] );
+
+		$zero = $this->sanitize( array( 'use_iam_role' => '0' ) );
+		$this->assertSame( '0', $zero['use_iam_role'], 'A submitted "0" is not "checked"' );
 	}
 
+	/* ---------------------------------------------------------------
+	 * Region, distribution ID and paths
+	 * ------------------------------------------------------------- */
+
 	public function test_invalid_region_adds_error_and_preserves_previous() {
-		$seed = array( 'aws_region' => 'us-east-1' );
-		$this->seed_settings( $seed );
+		$this->stored = array( 'aws_region' => 'eu-west-2' );
 
-		$result = $this->plugin->validate_settings( array( 'aws_region' => 'bad_region' ) );
+		$result = $this->sanitize( array( 'aws_region' => 'bad_region' ) );
 
-		$this->assertSame( 'us-east-1', $result['aws_region'] );
+		$this->assertSame( 'eu-west-2', $result['aws_region'] );
 		$this->assertSame( 'invalid_aws_region', $this->settings_errors[0]['code'] );
 	}
 
 	public function test_valid_region_updates_and_normalizes() {
-		$this->seed_settings( array( 'aws_region' => 'us-east-1' ) );
-
-		$result = $this->plugin->validate_settings( array( 'aws_region' => 'EU-West-2' ) );
+		$result = $this->sanitize( array( 'aws_region' => ' EU-West-2 ' ) );
 
 		$this->assertSame( 'eu-west-2', $result['aws_region'] );
 	}
 
-	public function test_invalid_distribution_id_adds_error_and_preserves_previous() {
-		$seed = array( 'distribution_id' => 'OLDID123456789' );
-		$this->seed_settings( $seed );
+	public function test_multi_segment_partition_regions_are_accepted() {
+		$result = $this->sanitize( array( 'aws_region' => 'us-gov-west-1' ) );
 
-		$result = $this->plugin->validate_settings( array( 'distribution_id' => 'bad' ) );
+		$this->assertSame( 'us-gov-west-1', $result['aws_region'] );
+		$this->assertEmpty( $this->settings_errors );
+	}
+
+	public function test_blank_region_falls_back_to_default() {
+		$this->stored = array( 'aws_region' => 'eu-west-2' );
+
+		$result = $this->sanitize( array( 'aws_region' => '' ) );
+
+		$this->assertSame( 'us-east-1', $result['aws_region'] );
+		$this->assertEmpty( $this->settings_errors );
+	}
+
+	public function test_invalid_distribution_id_adds_error_and_preserves_previous() {
+		$this->stored = array( 'distribution_id' => 'OLDID123456789' );
+
+		$result = $this->sanitize( array( 'distribution_id' => 'bad' ) );
 
 		$this->assertSame( 'OLDID123456789', $result['distribution_id'] );
 		$this->assertSame( 'invalid_distribution_id', $this->settings_errors[0]['code'] );
 	}
 
 	public function test_valid_distribution_id_updates_and_normalizes() {
-		$this->seed_settings( array( 'distribution_id' => 'OLDID123456789' ) );
+		$result = $this->sanitize( array( 'distribution_id' => ' e1234567890abc ' ) );
 
-		$result = $this->plugin->validate_settings( array( 'distribution_id' => 'e1234567890123' ) );
-
-		$this->assertSame( 'E1234567890123', $result['distribution_id'] );
+		$this->assertSame( 'E1234567890ABC', $result['distribution_id'] );
 	}
 
 	public function test_invalid_invalidation_paths_adds_error_and_preserves_previous() {
-		$seed = array( 'invalidation_paths' => '/*' );
-		$this->seed_settings( $seed );
+		$this->stored = array( 'invalidation_paths' => '/*' );
 
-		$result = $this->plugin->validate_settings( array( 'invalidation_paths' => "blog/*\n/images/*" ) );
+		$result = $this->sanitize( array( 'invalidation_paths' => "blog/*\n/images/*" ) );
 
 		$this->assertSame( '/*', $result['invalidation_paths'] );
 		$this->assertSame( 'invalid_invalidation_paths', $this->settings_errors[0]['code'] );
 	}
 
 	public function test_valid_invalidation_paths_updates() {
-		$this->seed_settings( array( 'invalidation_paths' => '/*' ) );
+		$result = $this->sanitize( array( 'invalidation_paths' => "  /*  \n  /blog/*  \n\n  /images/*  " ) );
 
-		$paths  = "/*\n/blog/*\n/images/*";
-		$result = $this->plugin->validate_settings( array( 'invalidation_paths' => $paths ) );
-
-		$this->assertSame( $paths, $result['invalidation_paths'] );
+		$this->assertSame( "/*\n/blog/*\n/images/*", $result['invalidation_paths'] );
+		$this->assertEmpty( $this->settings_errors );
 	}
 
-	public function test_credentials_flag_cleared_when_one_side_missing() {
-		$seed = array(
-			'aws_access_key_enc' => 'only-access',
-			'credentials_stored' => true,
-		);
-		$this->seed_settings( $seed );
+	/* ---------------------------------------------------------------
+	 * Legacy wrapper on the main class shares the same code path
+	 * ------------------------------------------------------------- */
 
-		$result = $this->plugin->validate_settings( array() );
-
-		$this->assertArrayNotHasKey( 'aws_access_key_enc', $result );
-		$this->assertArrayNotHasKey( 'aws_secret_key_enc', $result );
-		$this->assertArrayNotHasKey( 'credentials_stored', $result );
-	}
-
-	private function seed_settings( array $settings ): void {
-		// Update plugin's settings property.
-		$plugin_reflection = new ReflectionClass( $this->plugin );
-		$plugin_property   = $plugin_reflection->getProperty( 'settings' );
-		$plugin_property->setValue( $this->plugin, $settings );
-
-		// Also update settings_manager's current_settings so credential processing sees them.
-		$settings_manager_property = $plugin_reflection->getProperty( 'settings_manager' );
-		$settings_manager = $settings_manager_property->getValue( $this->plugin );
-
-		$sm_reflection = new ReflectionClass( $settings_manager );
-		$sm_property   = $sm_reflection->getProperty( 'current_settings' );
-		$sm_property->setValue( $settings_manager, $settings );
-	}
-
-	public function test_http_submission_preserves_existing_credentials() {
-		Functions\when( 'is_ssl' )->justReturn( false );
-
-		$seed = array(
+	public function test_plugin_wrapper_delegates_to_registered_callback() {
+		$this->stored = array(
 			'aws_access_key_enc' => 'enc-access',
 			'aws_secret_key_enc' => 'enc-secret',
 			'credentials_stored' => true,
 		);
-		$this->seed_settings( $seed );
+		$plugin = new NotGlossy_CloudFront_Cache_Invalidator();
 
-		$input = array(
-			'use_iam_role'   => '0',
-			'aws_access_key' => 'NEWACCESS',
-			'aws_secret_key' => 'NEWSECRET',
-		);
+		$result = $plugin->validate_settings( $this->form( array( 'aws_access_key' => 'AKIANEWNEWNEWNEWNEW1' ) ) );
 
-		$result = $this->plugin->validate_settings( $input );
-
-		$this->assertSame( $seed['aws_access_key_enc'], $result['aws_access_key_enc'], 'Existing access key should be preserved over HTTP' );
-		$this->assertSame( $seed['aws_secret_key_enc'], $result['aws_secret_key_enc'], 'Existing secret key should be preserved over HTTP' );
-		$this->assertTrue( $result['credentials_stored'], 'Stored flag should remain true' );
-		$this->assertNotEmpty( $this->settings_errors );
-		$this->assertSame( 'cloudfront_cache_invalidator_options', $this->settings_errors[0]['option'] );
-		$this->assertSame( 'cloudfront_https_required', $this->settings_errors[0]['code'] );
-	}
-
-	public function test_text_fields_are_sanitized_and_normalized() {
-		$this->seed_settings(
-			array(
-				'aws_region'      => 'us-east-1',
-				'distribution_id' => 'E1OLDVALUE12345',
-			)
-		);
-
-		$input = array(
-			'aws_region'      => ' EU-West-2 ',
-			'distribution_id' => ' e1234567890abc ',
-		);
-
-		$result = $this->plugin->validate_settings( $input );
-
-		$this->assertSame( 'eu-west-2', $result['aws_region'], 'Region should be trimmed, lowercased, and validated' );
-		$this->assertSame( 'E1234567890ABC', $result['distribution_id'], 'Distribution ID should be trimmed and uppercased' );
-	}
-
-	public function test_textarea_sanitization_and_validation() {
-		$this->seed_settings( array( 'invalidation_paths' => '/*' ) );
-
-		$input = array(
-			'invalidation_paths' => "  /*  \n  /blog/*  \n\n  /images/*  ",
-		);
-
-		$result = $this->plugin->validate_settings( $input );
-
-		$this->assertSame( "/*\n/blog/*\n/images/*", $result['invalidation_paths'], 'Textarea should be trimmed per line and preserved with newlines' );
-		$this->assertEmpty( $this->settings_errors, 'Valid paths should not trigger errors' );
-	}
-
-	public function test_invalid_textarea_paths_trigger_error_and_preserve_existing() {
-		$this->seed_settings( array( 'invalidation_paths' => '/*' ) );
-
-		$input = array(
-			'invalidation_paths' => "blog/*\n/images/*", // missing leading slashes
-		);
-
-		$result = $this->plugin->validate_settings( $input );
-
-		$this->assertSame( '/*', $result['invalidation_paths'], 'Existing value should be preserved on invalid input' );
-		$this->assertNotEmpty( $this->settings_errors );
-		$this->assertSame( 'invalid_invalidation_paths', $this->settings_errors[0]['code'] );
+		$this->assertSame( 'enc-access', $result['aws_access_key_enc'] );
+		$this->assertContains( 'cloudfront_credentials_incomplete', $this->error_codes() );
 	}
 }

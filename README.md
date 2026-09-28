@@ -20,7 +20,7 @@ CloudFront Cache Invalidator helps WordPress site owners who use Amazon CloudFro
 - **Manual Invalidation**: One-click button to manually invalidate entire cache
 - **Customizable Paths**: Configure default invalidation paths for site-wide changes
 - **Taxonomy Support**: Invalidates relevant paths when categories, tags, or custom taxonomies are modified
-- **Security-First**: AWS credentials are encrypted using AES-256-CBC before storage
+- **Security-First**: AWS credentials are encrypted with libsodium authenticated encryption (XSalsa20-Poly1305) before storage
 - **Input Validation**: Comprehensive validation for AWS regions, distribution IDs, and invalidation paths
 - **Error Handling**: Robust error handling with user-friendly messages and logging hooks
 
@@ -130,9 +130,18 @@ If your WordPress site is not hosted on AWS, you can use traditional access keys
    - Enter default invalidation paths if you want to customize them
    - Save the settings
 
+   Access-key mode only ever signs requests with the keys you configured. If no usable key pair is available (none stored, or the stored pair can no longer be decrypted), the plugin skips invalidations, returns a `credentials_missing` error to the logging hooks and shows an admin notice. It never falls back to credentials that happen to exist on the server.
+
+#### Rotating or removing access keys
+
+- **Rotate**: enter both the new Access Key and the new Secret Key and save. Leaving both fields blank keeps the stored pair. Submitting only one of the two is rejected and the stored pair is left unchanged.
+- **Remove**: tick "Remove the stored access keys when saving" under *Stored Credentials* and save.
+- **Constants / environment variables**: `CLOUDFRONT_AWS_ACCESS_KEY` and `CLOUDFRONT_AWS_SECRET_KEY` take precedence over stored keys.
+
 ### Security Features
 
-- **Credential Encryption**: AWS access keys and secret keys are encrypted using AES-256-CBC before being stored in the database
+- **Credential Encryption**: AWS access keys and secret keys are encrypted with libsodium authenticated encryption (`sodium_crypto_secretbox`, XSalsa20-Poly1305) before being stored in the database. The key is derived with HKDF from `AUTH_KEY` and `SECURE_AUTH_KEY`, so changing those salts makes stored keys undecryptable; the settings page reports this and asks you to re-enter them.
+- **Legacy Payload Migration**: Credentials stored by v1.1.0 / v1.2.0 (AES-256-CBC) are decrypted with the original key derivation and re-encrypted automatically on the next request.
 - **HTTPS Requirement**: Credentials cannot be saved over HTTP connections
 - **Migration Support**: Automatically migrates legacy plaintext credentials to encrypted storage
 - **Environment Variable Support**: Supports loading credentials from constants or environment variables
@@ -312,7 +321,7 @@ composer audit
 
 The plugin includes comprehensive unit tests covering:
 
-- **Encryption/Decryption** (CRITICAL) - AWS credential security using AES-256-CBC
+- **Encryption/Decryption** (CRITICAL) - libsodium authenticated encryption for stored credentials, plus AES-256-CBC decryption and migration of legacy v1.1.0/v1.2.0 payloads
 - **Path Sanitization** (HIGH) - Path injection prevention and validation
 - **Input Validation** (HIGH) - AWS regions, distribution IDs, and invalidation paths
 - **Credential Resolution** (MEDIUM) - Priority resolution (constants > env > options)
@@ -348,7 +357,7 @@ See `.github/workflows/ci.yml` and `.github/workflows/README.md` for details.
 
 ### Security
 
-- All AWS credentials are encrypted using AES-256-CBC before database storage
+- All AWS credentials are encrypted with libsodium authenticated encryption before database storage
 - Input validation prevents injection attacks
 - HTTPS requirement for credential submission
 - Follows WordPress security best practices
@@ -363,6 +372,18 @@ For support, feature requests, or bug reports, please [create an issue](https://
 Developed by Not Glossy, LLC
 
 ## Changelog
+
+### 1.2.1
+- Fixed: newly entered access keys were silently discarded in favour of the previously stored pair, so keys could not be rotated from the settings page
+- Fixed: the first save on a fresh install dropped the entered keys and turned "Use IAM Role" on (the sanitize callback is now safe to run twice)
+- Fixed: credentials stored by v1.1.0 / v1.2.0 could not be decrypted after the key-derivation change; they are now migrated and re-encrypted automatically
+- Changed: access-key mode refuses to call AWS when no usable key pair is configured instead of falling back to the SDK's ambient credential chain; an admin notice explains why invalidations are paused
+- Added: "Remove the stored access keys" control and a stored-credentials status on the settings page
+- Added: half-submitted key pairs and malformed keys are rejected with a settings error; array-valued fields no longer cause a fatal error
+- Added: HTTP connect/request timeouts on the CloudFront client and a `notglossy_cloudfront_client_config` filter
+- Changed: credentials are passed to the SDK as a provider object and client-construction errors no longer expose the secret in exception traces
+- Changed: a blank AWS Region now defaults to `us-east-1`; multi-segment regions such as `us-gov-west-1` are accepted
+- Updated dependencies to clear published advisories (Guzzle 7.15.5, guzzlehttp/psr7 2.13.1, jmespath.php 2.9.2, PHPCS 3.13.6, WPCS 3.4.1)
 
 ### 1.2.0
 - Added comprehensive input validation for AWS regions, distribution IDs, and invalidation paths

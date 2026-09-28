@@ -108,11 +108,11 @@ class ValidationTest extends TestCase {
 	/**
 	 * Test empty AWS region is allowed.
 	 */
-	public function test_empty_aws_region_allowed() {
+	public function test_empty_aws_region_defaults() {
 		$result = $this->call_private_method( $this->plugin, 'validate_aws_region', array( '' ) );
 
 		$this->assertNotInstanceOf( WP_Error::class, $result );
-		$this->assertEquals( '', $result, 'Empty region should be allowed (will use default)' );
+		$this->assertEquals( 'us-east-1', $result, 'Empty region falls back to the default region' );
 	}
 
 	/**
