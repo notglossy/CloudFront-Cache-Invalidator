@@ -562,6 +562,20 @@ class InvalidationPathsTest extends TestCase {
 		$this->assertCount( 1, $this->sent );
 	}
 
+	/**
+	 * wp_delete_comment( $id, true ) calls wp_transition_comment_status( 'delete', ... ),
+	 * so permanent deletion of an approved comment arrives as this transition.
+	 */
+	public function test_permanently_deleting_an_approved_comment_purges_the_post() {
+		$this->add_post( 5, 'post', 'hello-world' );
+		$comment = new WP_Comment( array( 'comment_ID' => 1, 'comment_post_ID' => 5, 'comment_approved' => '1' ) );
+
+		$this->manager->on_comment_status_transition( 'delete', 'approved', $comment );
+		$this->manager->flush();
+
+		$this->assertBatch( array( '/hello-world/', '/hello-world/*' ) );
+	}
+
 	public function test_approved_new_and_edited_comments_purge_the_post() {
 		$this->add_post( 5, 'post', 'hello-world' );
 		$this->comments[1] = new WP_Comment( array( 'comment_ID' => 1, 'comment_post_ID' => 5, 'comment_approved' => '1' ) );
@@ -650,6 +664,20 @@ class InvalidationPathsTest extends TestCase {
 
 	public function test_flush_with_nothing_queued_sends_nothing() {
 		$this->assertNothingSent();
+	}
+
+	public function test_legacy_post_delete_call_without_a_post_sends_default_paths() {
+		$this->settings_manager->set_settings( array( 'invalidation_paths' => "/*\n/blog/*" ) );
+
+		$this->manager->invalidate_on_post_delete();
+
+		$this->assertSame( array( array( '/*', '/blog/*' ) ), $this->sent );
+	}
+
+	public function test_legacy_post_delete_call_with_a_post_sends_its_paths() {
+		$this->manager->invalidate_on_post_delete( 7, $this->add_post( 7, 'page', 'about' ) );
+
+		$this->assertBatch( array( '/about/', '/about/*' ) );
 	}
 
 	public function test_manual_invalidate_all_sends_default_paths_immediately() {

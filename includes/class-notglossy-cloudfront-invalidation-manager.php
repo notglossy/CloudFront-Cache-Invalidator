@@ -531,6 +531,9 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Invalidate a post's URLs immediately before deletion.
 	 *
+	 * Called without a post, it keeps its pre-1.2.2 behaviour and sends the
+	 * configured default paths.
+	 *
 	 * @since 1.2.0
 	 * @access public
 	 * @param int          $post_id Post ID.
@@ -538,9 +541,11 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * @return mixed|null
 	 */
 	public function invalidate_on_post_delete( $post_id = 0, $post = null ) {
-		if ( $post_id || $post ) {
-			$this->on_post_deleting( $post_id, $post );
+		if ( ! $post_id && ! $post ) {
+			return $this->invalidate_all();
 		}
+
+		$this->on_post_deleting( $post_id, $post );
 		return $this->flush();
 	}
 
