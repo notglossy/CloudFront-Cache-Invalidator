@@ -162,37 +162,11 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	}
 
 	public function validate_settings( $input ) {
-		// First process credentials through the credential manager to preserve encryption handling.
-		// This encrypts keys and removes plaintext versions from the result.
-		$settings = $this->credential_manager->process_credential_submission( $input );
-
-		// Ensure settings manager sees the updated snapshot for validation fallbacks.
-		$this->settings_manager->set_settings( $settings );
-
-		// Remove plaintext credential keys from input before passing to settings validation.
-		// The credential manager has already handled encryption and removed these keys.
-		$input_for_validation = array_diff_key(
-			$input,
-			array_flip( array( 'aws_access_key', 'aws_secret_key' ) )
-		);
-
-		// For checkbox fields like use_iam_role, only include in merged data if it's in the original input.
-		// This ensures WordPress form behavior where unchecked checkboxes don't appear in form data.
-		$merged = array_merge( $settings, $input_for_validation );
-
-		// Remove use_iam_role from merged if it wasn't in the original input.
-		// This preserves the behavior that unchecked checkboxes don't override previous values
-		// in the validation flow - the settings_manager will default to '0' if not present.
-		if ( ! isset( $input['use_iam_role'] ) && isset( $merged['use_iam_role'] ) ) {
-			unset( $merged['use_iam_role'] );
-		}
-
-		// Validate non-credential fields. The credential manager has already processed credentials.
-		$validated = $this->settings_manager->validate_settings( $merged );
+		// Same code path as the sanitize callback registered with register_setting().
+		$validated = $this->settings_manager->validate_settings( $input );
 
 		// Sync mirrored settings for legacy property and downstream uses.
 		$this->settings = $validated;
-		$this->settings_manager->set_settings( $validated );
 
 		return $validated;
 	}

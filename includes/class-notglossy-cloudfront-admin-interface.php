@@ -64,6 +64,48 @@ class NotGlossy_CloudFront_Admin_Interface {
 		add_action( 'admin_menu', array( $this->settings_manager, 'add_settings_page' ) );
 		add_action( 'admin_post_cloudfront_invalidate_all', array( $this, 'handle_manual_invalidation' ) );
 		add_action( 'admin_notices', array( $this, 'display_invalidation_notices' ) );
+		add_action( 'admin_notices', array( $this, 'display_credential_notice' ) );
+	}
+
+	/**
+	 * Warn administrators when access-key mode has no usable credentials.
+	 *
+	 * Without this, automatic invalidations fail silently on every save.
+	 *
+	 * @since 1.2.1
+	 * @access public
+	 * @return void
+	 */
+	public function display_credential_notice() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$credential_manager = $this->settings_manager->get_credential_manager();
+		if ( null === $credential_manager ) {
+			return;
+		}
+
+		// Only nag once the plugin has actually been configured.
+		if ( '' === (string) $credential_manager->get_distribution_id() || $credential_manager->is_using_iam_role() ) {
+			return;
+		}
+
+		$status = $credential_manager->get_credential_status();
+		if ( NotGlossy_CloudFront_Credential_Manager::STATUS_UNDECRYPTABLE === $status ) {
+			$message = __( 'CloudFront Cache Invalidator: the stored AWS access keys cannot be decrypted (the WordPress salts may have changed). Automatic invalidations are paused until you re-enter the keys.', 'cloudfront-cache-invalidator' );
+		} elseif ( NotGlossy_CloudFront_Credential_Manager::STATUS_NONE === $status ) {
+			$message = __( 'CloudFront Cache Invalidator: no AWS access keys are configured and "Use IAM Role" is off. Automatic invalidations are paused until credentials are provided.', 'cloudfront-cache-invalidator' );
+		} else {
+			return;
+		}
+
+		printf(
+			'<div class="notice notice-error"><p>%s <a href="%s">%s</a></p></div>',
+			esc_html( $message ),
+			esc_url( admin_url( 'options-general.php?page=cloudfront-cache-invalidator' ) ),
+			esc_html__( 'Open settings', 'cloudfront-cache-invalidator' )
+		);
 	}
 
 	/**

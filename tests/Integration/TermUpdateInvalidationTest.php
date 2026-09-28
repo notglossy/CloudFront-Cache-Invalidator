@@ -53,6 +53,7 @@ class TermUpdateInvalidationTest extends TestCase {
 		// Mock common WordPress functions used in invalidation methods.
 		Functions\when( 'wp_generate_password' )->justReturn( 'abc123' );
 		Functions\when( 'do_action' )->justReturn( null );
+		Functions\when( '__' )->returnArg( 1 );
 
 		// Create plugin instance which registers hooks in constructor.
 		$this->plugin = new NotGlossy_CloudFront_Cache_Invalidator();

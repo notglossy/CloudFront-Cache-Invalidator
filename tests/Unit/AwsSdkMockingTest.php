@@ -28,14 +28,100 @@ class AwsSdkMockingTest extends TestCase {
 			)
 		);
 		Functions\when( 'do_action' )->justReturn( null );
+		Functions\when( '__' )->returnArg( 1 );
+
+		// Access-key mode needs a resolvable key pair; provide one via the environment.
+		putenv( 'CLOUDFRONT_AWS_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE' );
+		putenv( 'CLOUDFRONT_AWS_SECRET_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY' );
 
 		$this->plugin = new NotGlossy_CloudFront_Cache_Invalidator();
 	}
 
 	protected function tearDown(): void {
+		putenv( 'CLOUDFRONT_AWS_ACCESS_KEY' );
+		putenv( 'CLOUDFRONT_AWS_SECRET_KEY' );
 		\Mockery::close();
 		Monkey\tearDown();
 		parent::tearDown();
+	}
+
+	/**
+	 * Access-key mode without a usable key pair must refuse to call AWS instead of
+	 * falling through to the SDK's default credential chain.
+	 */
+	public function test_access_key_mode_without_credentials_refuses_to_call_aws(): void {
+		putenv( 'CLOUDFRONT_AWS_ACCESS_KEY' );
+		putenv( 'CLOUDFRONT_AWS_SECRET_KEY' );
+
+		$client_mock = \Mockery::mock( 'overload:Aws\\CloudFront\\CloudFrontClient' );
+		$client_mock->shouldNotReceive( 'createInvalidation' );
+
+		$result = $this->plugin->send_invalidation_request( array( '/*' ) );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'credentials_missing', $result->get_error_code() );
+	}
+
+	/**
+	 * The client is configured with explicit credentials (as a provider object, not a
+	 * raw array) and HTTP timeouts.
+	 */
+	public function test_client_config_has_credentials_object_and_timeouts(): void {
+		$captured = null;
+		Functions\when( 'apply_filters' )->alias(
+			function ( $hook, $value ) use ( &$captured ) {
+				if ( 'notglossy_cloudfront_client_config' === $hook ) {
+					$captured = $value;
+				}
+				return $value;
+			}
+		);
+		Functions\when( 'wp_generate_password' )->justReturn( 'abcd12' );
+
+		$client_mock = \Mockery::mock( 'overload:Aws\\CloudFront\\CloudFrontClient' );
+		$client_mock->shouldReceive( 'createInvalidation' )->once()->andReturn( array( 'Status' => 'InProgress' ) );
+
+		$this->plugin->send_invalidation_request( array( '/foo' ) );
+
+		$this->assertIsArray( $captured );
+		$this->assertSame( 'us-east-1', $captured['region'] );
+		$this->assertInstanceOf( \Aws\Credentials\Credentials::class, $captured['credentials'] );
+		$this->assertSame( 'AKIAIOSFODNN7EXAMPLE', $captured['credentials']->getAccessKeyId() );
+		$this->assertSame( 5, $captured['http']['connect_timeout'] );
+		$this->assertSame( 15, $captured['http']['timeout'] );
+	}
+
+	/**
+	 * IAM-role mode passes no credentials so the SDK default chain is used.
+	 */
+	public function test_iam_role_mode_passes_no_credentials(): void {
+		Functions\when( 'get_option' )->justReturn(
+			array(
+				'distribution_id' => 'E1234567890AB',
+				'aws_region'      => 'us-east-1',
+				'use_iam_role'    => '1',
+			)
+		);
+		$plugin = new NotGlossy_CloudFront_Cache_Invalidator();
+
+		$captured = null;
+		Functions\when( 'apply_filters' )->alias(
+			function ( $hook, $value ) use ( &$captured ) {
+				if ( 'notglossy_cloudfront_client_config' === $hook ) {
+					$captured = $value;
+				}
+				return $value;
+			}
+		);
+		Functions\when( 'wp_generate_password' )->justReturn( 'abcd12' );
+
+		$client_mock = \Mockery::mock( 'overload:Aws\\CloudFront\\CloudFrontClient' );
+		$client_mock->shouldReceive( 'createInvalidation' )->once()->andReturn( array( 'Status' => 'InProgress' ) );
+
+		$plugin->send_invalidation_request( array( '/foo' ) );
+
+		$this->assertIsArray( $captured );
+		$this->assertArrayNotHasKey( 'credentials', $captured );
 	}
 
 	/**
