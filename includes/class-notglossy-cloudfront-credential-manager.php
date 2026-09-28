@@ -61,6 +61,19 @@ class NotGlossy_CloudFront_Credential_Manager {
 	private $settings_manager;
 
 	/**
+	 * Ciphertexts produced by process_credential_submission() during this request.
+	 *
+	 * WordPress may run the sanitize callback a second time on its own output.
+	 * Only payloads issued here are carried through on that pass, so encrypted
+	 * values posted directly in a settings submission are never trusted.
+	 *
+	 * @since 1.2.1
+	 * @access private
+	 * @var string[]
+	 */
+	private $issued_payloads = array();
+
+	/**
 	 * Constructor.
 	 *
 	 * @since 1.2.0
@@ -596,9 +609,9 @@ class NotGlossy_CloudFront_Credential_Manager {
 		// Never persist plaintext fields.
 		unset( $settings['aws_access_key'], $settings['aws_secret_key'] );
 
-		// Carry through payloads that were already encrypted by an earlier pass.
+		// Carry through payloads this request encrypted on an earlier sanitize pass.
 		foreach ( array( 'aws_access_key_enc', 'aws_secret_key_enc' ) as $enc_key ) {
-			if ( isset( $input[ $enc_key ] ) && $this->is_encrypted_payload( $input[ $enc_key ] ) ) {
+			if ( isset( $input[ $enc_key ] ) && in_array( $input[ $enc_key ], $this->issued_payloads, true ) ) {
 				$settings[ $enc_key ] = $input[ $enc_key ];
 			}
 		}
@@ -629,6 +642,8 @@ class NotGlossy_CloudFront_Credential_Manager {
 				if ( false !== $encrypted_access && false !== $encrypted_secret ) {
 					$settings['aws_access_key_enc'] = $encrypted_access;
 					$settings['aws_secret_key_enc'] = $encrypted_secret;
+					$this->issued_payloads[]        = $encrypted_access;
+					$this->issued_payloads[]        = $encrypted_secret;
 				} else {
 					add_settings_error( $option, 'cloudfront_encryption_failed', __( 'AWS credentials could not be encrypted. Existing credentials were left unchanged.', 'cloudfront-cache-invalidator' ), 'error' );
 				}

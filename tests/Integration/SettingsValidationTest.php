@@ -188,6 +188,29 @@ class SettingsValidationTest extends TestCase {
 		$this->assertSame( '1', $result['use_iam_role'] );
 	}
 
+	public function test_posted_ciphertext_is_not_trusted() {
+		$stored_access = $this->encrypt( 'AKIASTOREDSTOREDSTO1' );
+		$stored_secret = $this->encrypt( 'storedstoredstoredstoredstoredstoredsto1' );
+		$this->stored  = array(
+			'aws_access_key_enc' => $stored_access,
+			'aws_secret_key_enc' => $stored_secret,
+			'credentials_stored' => true,
+		);
+
+		// Well-formed ciphertext injected into the form must not replace the stored pair.
+		$result = $this->sanitize(
+			$this->form(
+				array(
+					'aws_access_key_enc' => $this->encrypt( 'AKIAINJECTEDINJECTE1' ),
+					'aws_secret_key_enc' => $this->encrypt( 'injectedinjectedinjectedinjectedinject1' ),
+				)
+			)
+		);
+
+		$this->assertSame( $stored_access, $result['aws_access_key_enc'] );
+		$this->assertSame( $stored_secret, $result['aws_secret_key_enc'] );
+	}
+
 	public function test_sanitizer_is_a_fixed_point_on_its_own_output() {
 		$this->stored = array();
 

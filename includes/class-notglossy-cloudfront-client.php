@@ -126,7 +126,8 @@ class NotGlossy_CloudFront_Client {
 			}
 
 			// A provider object keeps the secret out of exception stack traces.
-			$config['credentials'] = new Aws\Credentials\Credentials( $creds['key'], $creds['secret'] );
+			$access_key_credentials = new Aws\Credentials\Credentials( $creds['key'], $creds['secret'] );
+			$config['credentials']  = $access_key_credentials;
 			unset( $creds );
 		}
 
@@ -137,6 +138,15 @@ class NotGlossy_CloudFront_Client {
 		 * @param array $config Client configuration (region, http timeouts, credentials, ...).
 		 */
 		$config = apply_filters( 'notglossy_cloudfront_client_config', $config );
+		if ( ! is_array( $config ) ) {
+			$config = array();
+		}
+
+		// In access-key mode a filter may replace the credentials, but removing them
+		// would re-enable the SDK's ambient credential chain, so restore them.
+		if ( ! $use_iam_role && empty( $config['credentials'] ) ) {
+			$config['credentials'] = $access_key_credentials;
+		}
 
 		try {
 			// Set up AWS CloudFront client.

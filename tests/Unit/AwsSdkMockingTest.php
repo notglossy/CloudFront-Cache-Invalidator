@@ -92,6 +92,36 @@ class AwsSdkMockingTest extends TestCase {
 	}
 
 	/**
+	 * A config filter that drops the credentials must not re-enable the ambient
+	 * credential chain in access-key mode.
+	 */
+	public function test_filter_removing_credentials_does_not_enable_ambient_chain(): void {
+		Functions\when( 'apply_filters' )->alias(
+			function ( $hook, $value ) {
+				if ( 'notglossy_cloudfront_client_config' === $hook ) {
+					unset( $value['credentials'] );
+				}
+				return $value;
+			}
+		);
+		Functions\when( 'wp_generate_password' )->justReturn( 'abcd12' );
+
+		$captured    = null;
+		$client_mock = \Mockery::mock( 'overload:Aws\\CloudFront\\CloudFrontClient' );
+		$client_mock->shouldReceive( '__construct' )->andReturnUsing(
+			function ( $config ) use ( &$captured ) {
+				$captured = $config;
+			}
+		);
+		$client_mock->shouldReceive( 'createInvalidation' )->once()->andReturn( array( 'Status' => 'InProgress' ) );
+
+		$this->plugin->send_invalidation_request( array( '/foo' ) );
+
+		$this->assertInstanceOf( \Aws\Credentials\Credentials::class, $captured['credentials'] );
+		$this->assertSame( 'AKIAIOSFODNN7EXAMPLE', $captured['credentials']->getAccessKeyId() );
+	}
+
+	/**
 	 * IAM-role mode passes no credentials so the SDK default chain is used.
 	 */
 	public function test_iam_role_mode_passes_no_credentials(): void {

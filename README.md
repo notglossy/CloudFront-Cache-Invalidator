@@ -321,7 +321,7 @@ composer audit
 
 The plugin includes comprehensive unit tests covering:
 
-- **Encryption/Decryption** (CRITICAL) - AWS credential security using AES-256-CBC
+- **Encryption/Decryption** (CRITICAL) - libsodium authenticated encryption for stored credentials, plus AES-256-CBC decryption and migration of legacy v1.1.0/v1.2.0 payloads
 - **Path Sanitization** (HIGH) - Path injection prevention and validation
 - **Input Validation** (HIGH) - AWS regions, distribution IDs, and invalidation paths
 - **Credential Resolution** (MEDIUM) - Priority resolution (constants > env > options)
