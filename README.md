@@ -340,7 +340,11 @@ GitHub Actions automatically runs tests on:
 - Security vulnerability scanning
 - Code coverage reporting (optional Codecov integration)
 
-See `.github/workflows/ci.yml` for details.
+Every non-draft pull request from this repository also gets an AI review that posts inline
+comments for bugs, security issues and over-engineering. It requires an `AI_API_KEY`
+repository secret (OpenRouter).
+
+See `.github/workflows/ci.yml` and `.github/workflows/README.md` for details.
 
 ### Security
 
