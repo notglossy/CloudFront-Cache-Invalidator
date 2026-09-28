@@ -94,65 +94,34 @@ class HookRegistrationTest extends TestCase {
 	}
 
 	/**
-	 * Test that save_post hook is registered.
+	 * Content hooks go to the invalidation manager's batching callbacks.
 	 */
-	public function test_save_post_hook_is_registered() {
-		$this->assertTrue(
-			has_action( 'save_post', array( $this->invalidation_manager, 'invalidate_on_post_update' ) ) !== false,
-			'save_post hook should be registered with invalidate_on_post_update callback'
+	public function test_content_hooks_are_registered() {
+		$expected = array(
+			'wp_after_insert_post' => array( 'on_post_saved', 10 ),
+			'set_object_terms'     => array( 'on_object_terms_set', 10 ),
+			'before_delete_post'   => array( 'on_post_deleting', 10 ),
+			'switch_theme'         => array( 'queue_default_paths', 10 ),
+			'customize_save_after' => array( 'queue_default_paths', 10 ),
+			'wp_update_nav_menu'   => array( 'queue_default_paths', 10 ),
+			'shutdown'             => array( 'flush', 10 ),
 		);
+
+		foreach ( $expected as $hook => $callback ) {
+			$this->assertSame(
+				$callback[1],
+				has_action( $hook, array( $this->invalidation_manager, $callback[0] ) ),
+				"$hook should be registered with {$callback[0]}"
+			);
+		}
 	}
 
 	/**
-	 * Test that save_post hook has correct priority.
+	 * The old hooks that caused full purges are no longer used.
 	 */
-	public function test_save_post_hook_has_correct_priority() {
-		$priority = has_action( 'save_post', array( $this->invalidation_manager, 'invalidate_on_post_update' ) );
-		$this->assertEquals(
-			10,
-			$priority,
-			'save_post hook should be registered with priority 10'
-		);
-	}
-
-	/**
-	 * Test that deleted_post hook is registered.
-	 */
-	public function test_deleted_post_hook_is_registered() {
-		$this->assertTrue(
-			has_action( 'deleted_post', array( $this->invalidation_manager, 'invalidate_on_post_delete' ) ) !== false,
-			'deleted_post hook should be registered with invalidate_on_post_delete callback'
-		);
-	}
-
-	/**
-	 * Test that switch_theme hook is registered.
-	 */
-	public function test_switch_theme_hook_is_registered() {
-		$this->assertTrue(
-			has_action( 'switch_theme', array( $this->invalidation_manager, 'invalidate_all' ) ) !== false,
-			'switch_theme hook should be registered with invalidate_all callback'
-		);
-	}
-
-	/**
-	 * Test that customize_save_after hook is registered.
-	 */
-	public function test_customize_save_after_hook_is_registered() {
-		$this->assertTrue(
-			has_action( 'customize_save_after', array( $this->invalidation_manager, 'invalidate_all' ) ) !== false,
-			'customize_save_after hook should be registered with invalidate_all callback'
-		);
-	}
-
-	/**
-	 * Test that wp_update_nav_menu hook is registered.
-	 */
-	public function test_wp_update_nav_menu_hook_is_registered() {
-		$this->assertTrue(
-			has_action( 'wp_update_nav_menu', array( $this->invalidation_manager, 'invalidate_all' ) ) !== false,
-			'wp_update_nav_menu hook should be registered with invalidate_all callback'
-		);
+	public function test_legacy_post_hooks_are_not_registered() {
+		$this->assertFalse( has_action( 'save_post', array( $this->invalidation_manager, 'invalidate_on_post_update' ) ) );
+		$this->assertFalse( has_action( 'deleted_post', array( $this->invalidation_manager, 'invalidate_on_post_delete' ) ) );
 	}
 
 	/**
