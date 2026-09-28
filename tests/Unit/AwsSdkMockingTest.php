@@ -92,16 +92,15 @@ class AwsSdkMockingTest extends TestCase {
 	}
 
 	/**
-	 * A config filter that drops the credentials must not re-enable the ambient
-	 * credential chain in access-key mode.
+	 * Run a request with a config filter applied and return the config the SDK client received.
+	 *
+	 * @param callable $filter Receives and returns the client config.
+	 * @return array|null
 	 */
-	public function test_filter_removing_credentials_does_not_enable_ambient_chain(): void {
+	private function config_after_filter( callable $filter ) {
 		Functions\when( 'apply_filters' )->alias(
-			function ( $hook, $value ) {
-				if ( 'notglossy_cloudfront_client_config' === $hook ) {
-					unset( $value['credentials'] );
-				}
-				return $value;
+			function ( $hook, $value ) use ( $filter ) {
+				return 'notglossy_cloudfront_client_config' === $hook ? $filter( $value ) : $value;
 			}
 		);
 		Functions\when( 'wp_generate_password' )->justReturn( 'abcd12' );
@@ -117,8 +116,64 @@ class AwsSdkMockingTest extends TestCase {
 
 		$this->plugin->send_invalidation_request( array( '/foo' ) );
 
+		return $captured;
+	}
+
+	/**
+	 * Values that make the SDK use its ambient default credential chain are
+	 * replaced with the configured access keys in access-key mode.
+	 *
+	 * @dataProvider ambient_credential_values
+	 * @param string $case Which value the filter sets.
+	 */
+	public function test_filter_cannot_enable_ambient_chain( string $case ): void {
+		$captured = $this->config_after_filter(
+			function ( $config ) use ( $case ) {
+				if ( 'removed' === $case ) {
+					unset( $config['credentials'] );
+				} elseif ( 'null' === $case ) {
+					$config['credentials'] = null;
+				} else {
+					$config['credentials'] = new \Aws\LruArrayCache();
+				}
+				return $config;
+			}
+		);
+
 		$this->assertInstanceOf( \Aws\Credentials\Credentials::class, $captured['credentials'] );
 		$this->assertSame( 'AKIAIOSFODNN7EXAMPLE', $captured['credentials']->getAccessKeyId() );
+	}
+
+	public function ambient_credential_values(): array {
+		return array(
+			'removed' => array( 'removed' ),
+			'null'    => array( 'null' ),
+			'cache'   => array( 'cache' ),
+		);
+	}
+
+	/**
+	 * Deliberate replacements from a filter are kept, including `false` (unsigned requests).
+	 */
+	public function test_filter_replacement_credentials_are_kept(): void {
+		$replacement = new \Aws\Credentials\Credentials( 'AKIAREPLACEMENTKEY01', 'replacementsecretreplacementsecret01' );
+		$captured    = $this->config_after_filter(
+			function ( $config ) use ( $replacement ) {
+				$config['credentials'] = $replacement;
+				return $config;
+			}
+		);
+		$this->assertSame( $replacement, $captured['credentials'] );
+	}
+
+	public function test_filter_false_credentials_are_kept(): void {
+		$captured = $this->config_after_filter(
+			function ( $config ) {
+				$config['credentials'] = false;
+				return $config;
+			}
+		);
+		$this->assertFalse( $captured['credentials'] );
 	}
 
 	/**
