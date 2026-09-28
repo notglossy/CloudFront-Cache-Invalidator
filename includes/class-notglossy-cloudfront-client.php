@@ -142,9 +142,10 @@ class NotGlossy_CloudFront_Client {
 			$config = array();
 		}
 
-		// In access-key mode a filter may replace the credentials, but removing them
-		// would re-enable the SDK's ambient credential chain, so restore them.
-		if ( ! $use_iam_role && empty( $config['credentials'] ) ) {
+		// In access-key mode a filter may replace the credentials (including `false`
+		// for unsigned requests), but a missing or null value, or a cache instance,
+		// makes the SDK use its ambient default chain, so restore them in that case.
+		if ( ! $use_iam_role && ( ! isset( $config['credentials'] ) || $config['credentials'] instanceof Aws\CacheInterface ) ) {
 			$config['credentials'] = $access_key_credentials;
 		}
 
