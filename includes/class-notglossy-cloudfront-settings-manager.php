@@ -45,17 +45,6 @@ class NotGlossy_CloudFront_Settings_Manager {
 	}
 
 	/**
-	 * Get the credential manager, if one has been attached.
-	 *
-	 * @since 1.2.1
-	 * @access public
-	 * @return NotGlossy_CloudFront_Credential_Manager|null
-	 */
-	public function get_credential_manager() {
-		return $this->credential_manager;
-	}
-
-	/**
 	 * Cached settings for tests/injection.
 	 *
 	 * @since 1.2.0
@@ -245,14 +234,6 @@ class NotGlossy_CloudFront_Settings_Manager {
 		);
 
 		add_settings_field(
-			'clear_credentials',
-			'Stored Credentials',
-			array( $this, 'clear_credentials_callback' ),
-			'cloudfront-cache-invalidator',
-			$this->settings_section
-		);
-
-		add_settings_field(
 			'aws_region',
 			'AWS Region',
 			array( $this, 'aws_region_callback' ),
@@ -324,7 +305,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 		$value = $this->get_setting( 'use_iam_role', '0' );
 		echo '<input type="checkbox" id="use_iam_role" name="' . esc_attr( $this->settings_option ) . '[use_iam_role]" value="1" ' . checked( '1', $value, false ) . '/>';
 		echo '<label for="use_iam_role"> Use instance IAM role (recommended if your WordPress server is running on AWS)</label>';
-		echo '<p class="description">When enabled, the plugin uses the AWS SDK default credential chain (instance profile, container credentials, environment variables). Stored access keys are ignored while this is on.</p>';
+		echo '<p class="description">When enabled, AWS access keys below are optional and will only be used as a fallback.</p>';
 	}
 
 	/**
@@ -338,9 +319,11 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return void
 	 */
 	public function aws_access_key_callback() {
-		$disabled = $this->get_setting( 'use_iam_role' ) === '1' ? 'disabled' : '';
-		echo '<input type="text" id="aws_access_key" name="' . esc_attr( $this->settings_option ) . '[aws_access_key]" value="" placeholder="' . esc_attr( $this->get_credential_placeholder() ) . '" class="regular-text" autocomplete="off" spellcheck="false" ' . esc_attr( $disabled ) . '/>';
-		echo '<p class="description">Leave blank to keep the stored key. To rotate, enter both the new Access Key and the new Secret Key.</p>';
+		$disabled    = $this->get_setting( 'use_iam_role' ) === '1' ? 'disabled' : '';
+		$has_stored  = ! empty( $this->get_setting( 'credentials_stored' ) ) && ! empty( $this->get_setting( 'aws_access_key_enc' ) );
+		$placeholder = $has_stored ? '******** (stored)' : '';
+		echo '<input type="text" id="aws_access_key" name="' . esc_attr( $this->settings_option ) . '[aws_access_key]" value="" placeholder="' . esc_attr( $placeholder ) . '" class="regular-text" ' . esc_attr( $disabled ) . '/>';
+		echo '<p class="description">Optional when using IAM role. Leave blank to keep existing; enter a new key to replace.</p>';
 	}
 
 	/**
@@ -354,68 +337,11 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return void
 	 */
 	public function aws_secret_key_callback() {
-		$disabled = $this->get_setting( 'use_iam_role' ) === '1' ? 'disabled' : '';
-		echo '<input type="password" id="aws_secret_key" name="' . esc_attr( $this->settings_option ) . '[aws_secret_key]" value="" placeholder="' . esc_attr( $this->get_credential_placeholder() ) . '" class="regular-text" autocomplete="new-password" spellcheck="false" ' . esc_attr( $disabled ) . '/>';
-		echo '<p class="description">Leave blank to keep the stored secret. To rotate, enter both the new Access Key and the new Secret Key.</p>';
-	}
-
-	/**
-	 * Placeholder text describing the state of the stored credentials.
-	 *
-	 * @since 1.2.1
-	 * @access private
-	 * @return string
-	 */
-	private function get_credential_placeholder() {
-		if ( null === $this->credential_manager ) {
-			return '';
-		}
-
-		switch ( $this->credential_manager->get_credential_status() ) {
-			case NotGlossy_CloudFront_Credential_Manager::STATUS_STORED:
-				return '******** (stored)';
-			case NotGlossy_CloudFront_Credential_Manager::STATUS_UNDECRYPTABLE:
-				return '******** (stored, cannot be decrypted - re-enter)';
-			case NotGlossy_CloudFront_Credential_Manager::STATUS_EXTERNAL:
-				return '(set by constant or environment variable)';
-			default:
-				return '';
-		}
-	}
-
-	/**
-	 * Stored credentials status and "remove" checkbox.
-	 *
-	 * @since 1.2.1
-	 * @access public
-	 * @return void
-	 */
-	public function clear_credentials_callback() {
-		if ( null === $this->credential_manager ) {
-			return;
-		}
-
-		$status = $this->credential_manager->get_credential_status();
-
-		switch ( $status ) {
-			case NotGlossy_CloudFront_Credential_Manager::STATUS_STORED:
-				echo '<p>' . esc_html__( 'An encrypted access key pair is stored in the database.', 'cloudfront-cache-invalidator' ) . '</p>';
-				break;
-			case NotGlossy_CloudFront_Credential_Manager::STATUS_UNDECRYPTABLE:
-				echo '<p><strong>' . esc_html__( 'The stored access key pair cannot be decrypted.', 'cloudfront-cache-invalidator' ) . '</strong> ' . esc_html__( 'This usually means the WordPress salts changed. Enter the keys again, or remove them.', 'cloudfront-cache-invalidator' ) . '</p>';
-				break;
-			case NotGlossy_CloudFront_Credential_Manager::STATUS_EXTERNAL:
-				echo '<p>' . esc_html__( 'Credentials are provided by the CLOUDFRONT_AWS_ACCESS_KEY / CLOUDFRONT_AWS_SECRET_KEY constants or environment variables and take precedence over stored keys.', 'cloudfront-cache-invalidator' ) . '</p>';
-				break;
-			default:
-				echo '<p>' . esc_html__( 'No access keys are stored.', 'cloudfront-cache-invalidator' ) . '</p>';
-				break;
-		}
-
-		if ( $this->credential_manager->has_stored_credentials() ) {
-			echo '<input type="checkbox" id="clear_credentials" name="' . esc_attr( $this->settings_option ) . '[clear_credentials]" value="1" />';
-			echo '<label for="clear_credentials"> ' . esc_html__( 'Remove the stored access keys when saving', 'cloudfront-cache-invalidator' ) . '</label>';
-		}
+		$disabled    = $this->get_setting( 'use_iam_role' ) === '1' ? 'disabled' : '';
+		$has_stored  = ! empty( $this->get_setting( 'credentials_stored' ) ) && ! empty( $this->get_setting( 'aws_secret_key_enc' ) );
+		$placeholder = $has_stored ? '******** (stored)' : '';
+		echo '<input type="password" id="aws_secret_key" name="' . esc_attr( $this->settings_option ) . '[aws_secret_key]" value="" placeholder="' . esc_attr( $placeholder ) . '" class="regular-text" ' . esc_attr( $disabled ) . '/>';
+		echo '<p class="description">Optional when using IAM role. Leave blank to keep existing; enter a new secret to replace.</p>';
 	}
 
 	/**
@@ -480,13 +406,13 @@ class NotGlossy_CloudFront_Settings_Manager {
 	private function validate_aws_region( $region ) {
 		$region = trim( strtolower( $region ) );
 
-		// Blank region falls back to the default.
+		// Allow empty region (will use default).
 		if ( '' === $region ) {
-			return 'us-east-1';
+			return $region;
 		}
 
-		// Validate region format: xx-xxxx-#, xxx-xxxx-# or xx-xxx-xxxx-# (e.g. us-gov-west-1).
-		if ( ! preg_match( '/^[a-z]{2,3}(-[a-z]+)+-\d+$/', $region ) ) {
+		// Validate region format: xx-xxxx-# or xxx-xxxx-#.
+		if ( ! preg_match( '/^[a-z]{2,3}-[a-z]+-\d+$/', $region ) ) {
 			return new WP_Error(
 				'invalid_aws_region',
 				__( 'Invalid AWS region format. Please use format like: us-east-1, eu-west-2, ap-southeast-1', 'cloudfront-cache-invalidator' )
@@ -575,14 +501,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	/**
 	 * Validate settings.
 	 *
-	 * This is the sanitize callback registered with register_setting(). It must
-	 * be safe to run more than once on its own output, because WordPress runs
-	 * it twice when the option is created (update_option() falls through to
-	 * add_option()). It therefore:
-	 *
-	 *  - starts from the value stored in the database, never a request-start snapshot;
-	 *  - treats the IAM checkbox as on only when it is submitted as "1";
-	 *  - applies credential changes last, so nothing can overwrite them.
+	 * Sanitizes and validates user input from the settings form.
 	 *
 	 * @since 1.2.0
 	 * @access public
@@ -590,23 +509,30 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return array Sanitized settings values.
 	 */
 	public function validate_settings( $input ) {
-		if ( ! is_array( $input ) ) {
-			$input = array();
-		}
+		// Start with existing settings so we can preserve encrypted values when fields are left blank.
+		$new_input = $this->get_settings();
 
-		// Start from what is stored so blank fields keep their existing values.
-		$stored = get_option( $this->settings_option, array() );
-		if ( ! is_array( $stored ) ) {
-			$stored = array();
-		}
-		$new_input = $stored;
+		// IAM role checkbox.
+		$new_input['use_iam_role'] = isset( $input['use_iam_role'] ) ? '1' : '0';
 
-		// IAM role checkbox: only an explicit "1" counts as checked.
-		$new_input['use_iam_role'] = ( isset( $input['use_iam_role'] ) && '1' === (string) $input['use_iam_role'] ) ? '1' : '0';
+		// Enforce HTTPS for credential submission.
+		$is_ssl = is_ssl();
+
+		$submitted_access = isset( $input['aws_access_key'] ) ? trim( $input['aws_access_key'] ) : '';
+		$submitted_secret = isset( $input['aws_secret_key'] ) ? trim( $input['aws_secret_key'] ) : '';
+
+		if ( ! $is_ssl && ( '' !== $submitted_access || '' !== $submitted_secret ) ) {
+			add_settings_error( $this->settings_option, 'cloudfront_https_required', __( 'AWS credentials cannot be saved over an insecure (HTTP) connection. Please use HTTPS.', 'cloudfront-cache-invalidator' ), 'error' );
+			// Do not modify stored credentials if submitted over HTTP.
+		} elseif ( null !== $this->credential_manager ) {
+			// Encrypt credentials via the credential manager — never store plaintext.
+			$credential_settings = $this->credential_manager->process_credential_submission( $input );
+			$new_input           = array_merge( $credential_settings, $new_input );
+		}
 
 		// Region validation.
 		if ( isset( $input['aws_region'] ) ) {
-			$region = is_string( $input['aws_region'] ) ? sanitize_text_field( $input['aws_region'] ) : '';
+			$region = sanitize_text_field( $input['aws_region'] );
 
 			$validated_region = $this->validate_aws_region( $region );
 			if ( is_wp_error( $validated_region ) ) {
@@ -617,7 +543,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 					'error'
 				);
 				// Keep existing or use default.
-				$new_input['aws_region'] = ! empty( $stored['aws_region'] ) ? $stored['aws_region'] : 'us-east-1';
+				$new_input['aws_region'] = $this->get_setting( 'aws_region', 'us-east-1' );
 			} else {
 				$new_input['aws_region'] = $validated_region;
 			}
@@ -625,7 +551,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 
 		// Distribution ID validation.
 		if ( isset( $input['distribution_id'] ) ) {
-			$dist_id = is_string( $input['distribution_id'] ) ? sanitize_text_field( $input['distribution_id'] ) : '';
+			$dist_id = sanitize_text_field( $input['distribution_id'] );
 
 			// Allow empty (user can clear the field).
 			if ( '' === $dist_id ) {
@@ -640,7 +566,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 						'error'
 					);
 					// Keep existing value.
-					$new_input['distribution_id'] = isset( $stored['distribution_id'] ) ? $stored['distribution_id'] : '';
+					$new_input['distribution_id'] = $this->get_setting( 'distribution_id', '' );
 				} else {
 					$new_input['distribution_id'] = $validated_dist_id;
 				}
@@ -649,7 +575,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 
 		// Invalidation paths validation.
 		if ( isset( $input['invalidation_paths'] ) ) {
-			$paths = is_string( $input['invalidation_paths'] ) ? sanitize_textarea_field( $input['invalidation_paths'] ) : '';
+			$paths = sanitize_textarea_field( $input['invalidation_paths'] );
 
 			$validated_paths = $this->validate_invalidation_paths( $paths );
 			if ( is_wp_error( $validated_paths ) ) {
@@ -660,21 +586,11 @@ class NotGlossy_CloudFront_Settings_Manager {
 					'error'
 				);
 				// Keep existing or use default.
-				$new_input['invalidation_paths'] = ! empty( $stored['invalidation_paths'] ) ? $stored['invalidation_paths'] : '/*';
+				$new_input['invalidation_paths'] = $this->get_setting( 'invalidation_paths', '/*' );
 			} else {
 				$new_input['invalidation_paths'] = $validated_paths;
 			}
 		}
-
-		// Credentials last, so the encrypted values can never be overwritten by stale data.
-		if ( null !== $this->credential_manager ) {
-			$new_input = $this->credential_manager->process_credential_submission( $input, $new_input );
-		} else {
-			unset( $new_input['aws_access_key'], $new_input['aws_secret_key'] );
-		}
-
-		// Keep in-memory reads consistent with what is about to be stored.
-		$this->current_settings = $new_input;
 
 		return $new_input;
 	}

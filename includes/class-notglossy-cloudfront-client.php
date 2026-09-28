@@ -99,66 +99,27 @@ class NotGlossy_CloudFront_Client {
 			return $validated_paths;
 		}
 
-		// Set up AWS CloudFront client config.
-		$config = array(
-			'version' => 'latest',
-			'region'  => $this->credential_manager->get_aws_region(),
-			'http'    => array(
-				'connect_timeout' => 5,
-				'timeout'         => 15,
-			),
-		);
+		try {
+			// Set up AWS CloudFront client config.
+			$config = array(
+				'version' => 'latest',
+				'region'  => $this->credential_manager->get_aws_region(),
+			);
 
-		// Use IAM role or keys based on settings.
-		$use_iam_role = $this->credential_manager->is_using_iam_role();
+			// Use IAM role or keys based on settings.
+			$use_iam_role = $this->credential_manager->is_using_iam_role();
 
-		if ( ! $use_iam_role ) {
-			// Access-key mode: never fall through to the SDK's default credential
-			// chain (environment, ~/.aws, instance metadata). Refuse instead.
-			$creds = $this->credential_manager->resolve_credentials();
-			if ( ! $creds || empty( $creds['key'] ) || empty( $creds['secret'] ) ) {
-				$error = new WP_Error(
-					'credentials_missing',
-					__( 'CloudFront invalidation skipped: no usable AWS access keys are configured. Enter the keys on the CloudFront Cache settings page or enable "Use IAM Role".', 'cloudfront-cache-invalidator' )
-				);
-				do_action( 'notglossy_cloudfront_invalidation_error', new \RuntimeException( $error->get_error_message() ) );
-				return $error;
+			// Only add credentials if not using IAM role and credentials are resolved.
+			if ( ! $use_iam_role ) {
+				$creds = $this->credential_manager->resolve_credentials();
+				if ( $creds && ! empty( $creds['key'] ) && ! empty( $creds['secret'] ) ) {
+					$config['credentials'] = $creds;
+				}
 			}
 
-			// A provider object keeps the secret out of exception stack traces.
-			$access_key_credentials = new Aws\Credentials\Credentials( $creds['key'], $creds['secret'] );
-			$config['credentials']  = $access_key_credentials;
-			unset( $creds );
-		}
-
-		/**
-		 * Filter the AWS SDK client configuration before the CloudFront client is created.
-		 *
-		 * @since 1.2.1
-		 * @param array $config Client configuration (region, http timeouts, credentials, ...).
-		 */
-		$config = apply_filters( 'notglossy_cloudfront_client_config', $config );
-		if ( ! is_array( $config ) ) {
-			$config = array();
-		}
-
-		// In access-key mode a filter may replace the credentials, but removing them
-		// would re-enable the SDK's ambient credential chain, so restore them.
-		if ( ! $use_iam_role && empty( $config['credentials'] ) ) {
-			$config['credentials'] = $access_key_credentials;
-		}
-
-		try {
 			// Set up AWS CloudFront client.
 			$client = new Aws\CloudFront\CloudFrontClient( $config );
-		} catch ( \Throwable $e ) {
-			// Client construction failures carry the config (and credentials) in their
-			// trace arguments, so hand listeners a plain exception with the message only.
-			do_action( 'notglossy_cloudfront_invalidation_error', new \RuntimeException( $e->getMessage(), (int) $e->getCode() ) );
-			return new WP_Error( 'client_config_failed', $e->getMessage() );
-		}
 
-		try {
 			// Create a unique reference ID for this invalidation.
 			$caller_reference = 'wp-' . time() . '-' . wp_generate_password( 6, false );
 
