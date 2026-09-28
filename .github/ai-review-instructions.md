@@ -55,6 +55,6 @@ These were raised by earlier reviews, checked, and decided. They are not finding
   self-hosted runner in this workflow, so runner-hardening findings do not apply.
 - **Review history.** The prompt tells the agent to read the PR's existing review comments and not re-raise
   answered findings. There is no separate digest step to harden.
-- **Instructions file read from the PR head.** This file is pulled in with `{{#runtime-import? ...}}` from the
+- **Instructions file read from the PR head.** This file is pulled in by an optional runtime import from the
   checked-out PR at run time, on purpose. Same-repo authors already control the workflow source, so this adds no
   attack surface, and a missing file is skipped rather than failing the run.
