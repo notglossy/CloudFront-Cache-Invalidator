@@ -26,7 +26,7 @@ CloudFront Cache Invalidator helps WordPress site owners who use Amazon CloudFro
 
 ## Requirements
 
-- WordPress 5.0 or higher
+- WordPress 5.7 or higher
 - PHP 8.1 or higher
 - AWS SDK for PHP (installed via Composer)
 - If using access keys: AWS account with CloudFront access
@@ -152,8 +152,10 @@ If your WordPress site is not hosted on AWS, you can use traditional access keys
 
 Once configured, the plugin will automatically trigger cache invalidations when:
 
-- Posts, pages, or custom post types are published, updated, or deleted
-- Categories, tags, or custom taxonomies are updated
+- Published posts, pages, or public custom post types are updated, unpublished, trashed, or deleted
+- A published post's slug, parent, date or terms change (the old URL is purged too)
+- Comments on a published post are approved, edited, unapproved, spammed, trashed or deleted
+- Public categories, tags, or custom taxonomy terms are updated, renamed or deleted
 - The theme is changed
 - Permalink structure is updated
 - Plugins are activated or deactivated
@@ -164,10 +166,18 @@ Once configured, the plugin will automatically trigger cache invalidations when:
 
 The plugin intelligently determines which paths to invalidate:
 
-- **Post Updates**: Invalidates the specific post URL, related archive pages, and taxonomy pages
-- **Page Updates**: Invalidates the page URL and root paths if it's the front page
-- **Term Updates**: Invalidates the specific taxonomy term URL
+- **Post Updates**: Invalidates the post URL (`/slug/` and `/slug/*`), the blog home or posts page, the feed, the author archive, the post type archive and the post's public term archives
+- **Page Updates**: Invalidates the page URL; the static front page purges `/` only
+- **Term Updates**: Invalidates the term archive and its pages, including the previous URL after a slug or parent change
 - **Site-wide Changes**: Uses default invalidation paths configured in settings
+
+Content changes never purge the whole distribution. Drafts, pending, private and scheduled posts, revisions, auto-drafts, menu items, reusable blocks, form entries and other non-public post types and taxonomies are ignored. The site root is purged as `/` plus `/page/*`, never `/*`, and wildcards are anchored on a path boundary (`/slug/*`). Sites using plain permalinks get the exact `/?p=123` URL.
+
+### Batching
+
+All paths collected during a request (for example a bulk edit) are sent as **one** invalidation when the request ends. A batch that would exceed CloudFront's limits (more than 15 wildcard paths or 3,000 paths) is sent as a single `/*` instead of being rejected.
+
+Automatic invalidation is skipped while `WP_IMPORTING` is set or `wp_suspend_cache_invalidation()` is active.
 
 ### Manual Invalidation
 
@@ -247,8 +257,17 @@ The plugin provides hooks for logging and monitoring:
 
 - `notglossy_cloudfront_invalidation_sent`: Fired when an invalidation request is successfully sent
 - `notglossy_cloudfront_invalidation_error`: Fired when an invalidation request fails
+- `notglossy_cloudfront_invalidation_paths` (filter): Receives the paths for the request's batch and the reasons they were queued (`post_saved`, `term_updated`, `comment_changed`, `switch_theme`, ...). Return a modified array to remap paths, or an empty array to skip the invalidation.
+- `notglossy_cloudfront_client_config` (filter): Adjust the AWS SDK client configuration
 
 You can use these hooks to implement custom logging or monitoring solutions.
+
+```php
+// Example: the distribution serves the site under /en/.
+add_filter( 'notglossy_cloudfront_invalidation_paths', function ( $paths ) {
+    return array_map( fn( $path ) => '/en' . $path, $paths );
+} );
+```
 
 ## Frequently Asked Questions
 
@@ -372,6 +391,17 @@ For support, feature requests, or bug reports, please [create an issue](https://
 Developed by Not Glossy, LLC
 
 ## Changelog
+
+### 1.2.2
+- Fixed: publishing a post on default reading settings, saving a draft, private or scheduled post, and saving content from private taxonomies no longer purges the entire distribution (`/*`)
+- Fixed: deleting revisions, auto-drafts and menu items no longer purges the entire distribution; deleting a published post purges only its URL and listings
+- Fixed: changing a slug, parent or date now purges the old URL; renaming or deleting a term purges its old archive
+- Fixed: block editor (REST) saves purge the post's current terms, and removed terms are purged too
+- Fixed: wildcards are anchored (`/slug/*`) so they no longer match sibling URLs on permalink structures without a trailing slash
+- Added: comments (approve, unapprove, edit, spam, trash, delete) purge the post they belong to
+- Added: one batched invalidation per request, with a fallback to `/*` for batches over CloudFront's limits
+- Added: `notglossy_cloudfront_invalidation_paths` filter; `WP_IMPORTING` and `wp_suspend_cache_invalidation()` are respected
+- Changed: requires WordPress 5.7 or higher
 
 ### 1.2.1
 - Fixed: newly entered access keys were silently discarded in favour of the previously stored pair, so keys could not be rotated from the settings page

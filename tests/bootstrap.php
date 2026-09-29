@@ -91,5 +91,50 @@ if ( ! class_exists( 'WP_Error' ) ) {
 	}
 }
 
+// Minimal WordPress object stubs so instanceof checks work in unit tests.
+if ( ! class_exists( 'WP_Post' ) ) {
+	class WP_Post {
+		public $ID          = 0;
+		public $post_type   = 'post';
+		public $post_status = 'publish';
+		public $post_author = 1;
+		public $post_name   = '';
+		public $post_parent = 0;
+
+		public function __construct( $props = array() ) {
+			foreach ( (array) $props as $key => $value ) {
+				$this->$key = $value;
+			}
+		}
+	}
+}
+if ( ! class_exists( 'WP_Term' ) ) {
+	class WP_Term {
+		public $term_id          = 0;
+		public $term_taxonomy_id = 0;
+		public $taxonomy         = 'category';
+		public $slug             = '';
+
+		public function __construct( $props = array() ) {
+			foreach ( (array) $props as $key => $value ) {
+				$this->$key = $value;
+			}
+		}
+	}
+}
+if ( ! class_exists( 'WP_Comment' ) ) {
+	class WP_Comment {
+		public $comment_ID       = 0;
+		public $comment_post_ID  = 0;
+		public $comment_approved = '1';
+
+		public function __construct( $props = array() ) {
+			foreach ( (array) $props as $key => $value ) {
+				$this->$key = $value;
+			}
+		}
+	}
+}
+
 // Load the plugin main class.
 require_once dirname( __DIR__ ) . '/includes/class-notglossy-cloudfront-cache-invalidator.php';

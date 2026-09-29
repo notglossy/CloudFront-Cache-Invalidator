@@ -188,12 +188,12 @@ class NotGlossy_CloudFront_Cache_Invalidator {
 	}
 
 	// Invalidation wrappers.
-	public function invalidate_on_post_update( $post_id, $post ) {
+	public function invalidate_on_post_update( $post_id, $post = null ) {
 		return $this->invalidation_manager->invalidate_on_post_update( $post_id, $post );
 	}
 
-	public function invalidate_on_post_delete() {
-		return $this->invalidation_manager->invalidate_on_post_delete();
+	public function invalidate_on_post_delete( $post_id = 0, $post = null ) {
+		return $this->invalidation_manager->invalidate_on_post_delete( $post_id, $post );
 	}
 
 	public function invalidate_on_term_update( $term_id, $tt_id, $taxonomy ) {
