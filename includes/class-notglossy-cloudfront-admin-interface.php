@@ -61,6 +61,7 @@ class NotGlossy_CloudFront_Admin_Interface {
 	public function register_hooks() {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
 		add_action( 'admin_init', array( $this->settings_manager, 'register_settings' ) );
+		add_filter( 'option_page_capability_' . $this->settings_manager->get_settings_group(), array( $this->settings_manager, 'filter_option_page_capability' ) );
 		add_action( 'admin_menu', array( $this->settings_manager, 'add_settings_page' ) );
 		add_action( 'admin_post_cloudfront_invalidate_all', array( $this, 'handle_manual_invalidation' ) );
 		add_action( 'admin_notices', array( $this, 'display_invalidation_notices' ) );
@@ -77,7 +78,7 @@ class NotGlossy_CloudFront_Admin_Interface {
 	 * @return void
 	 */
 	public function display_credential_notice() {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( $this->settings_manager->get_required_capability() ) ) {
 			return;
 		}
 
@@ -175,7 +176,7 @@ class NotGlossy_CloudFront_Admin_Interface {
 	 */
 	public function handle_manual_invalidation() {
 		// Check user permissions.
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( $this->settings_manager->get_required_capability() ) ) {
 			wp_die( esc_html__( 'You do not have sufficient permissions to perform this action.', 'cloudfront-cache-invalidator' ) );
 		}
 

@@ -11,6 +11,9 @@ require_once dirname( __DIR__ ) . '/vendor/autoload.php';
 // Initialize Brain\Monkey for WordPress function mocking.
 require_once dirname( __DIR__ ) . '/vendor/antecedent/patchwork/Patchwork.php';
 
+// Single-site WordPress defaults (redefinable by tests).
+require_once __DIR__ . '/wp-functions.php';
+
 // Define WordPress constants that might be used in the plugin.
 if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', '/tmp/wordpress/' );

@@ -76,11 +76,41 @@ class InvalidationPathsTest extends TestCase {
 	 */
 	private $permalink_overrides = array();
 
+	/**
+	 * Current blog ID and switch stack (multisite).
+	 *
+	 * @var int
+	 */
+	private $blog_id = 1;
+
+	/**
+	 * @var int[]
+	 */
+	private $blog_stack = array();
+
+	/**
+	 * Plugin option per blog, for sites other than the one seeded with set_settings().
+	 *
+	 * @var array<int,array>
+	 */
+	private $blog_options = array();
+
+	/**
+	 * Distribution ID the client saw for each batch.
+	 *
+	 * @var string[]
+	 */
+	private $sent_distributions = array();
+
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
 
 		$this->sent                = array();
+		$this->sent_distributions  = array();
+		$this->blog_id             = 1;
+		$this->blog_stack          = array();
+		$this->blog_options        = array();
 		$this->posts               = array();
 		$this->terms               = array();
 		$this->post_terms          = array();
@@ -101,7 +131,8 @@ class InvalidationPathsTest extends TestCase {
 		$client = $this->createMock( NotGlossy_CloudFront_Client::class );
 		$client->method( 'send_invalidation_request' )->willReturnCallback(
 			function ( $paths ) {
-				$this->sent[] = $paths;
+				$this->sent[]               = $paths;
+				$this->sent_distributions[] = $this->settings_manager->get_setting( 'distribution_id', '' );
 				return array( 'Status' => 'InProgress' );
 			}
 		);
@@ -134,7 +165,28 @@ class InvalidationPathsTest extends TestCase {
 		);
 		Functions\when( 'get_option' )->alias(
 			function ( $name, $fallback = false ) {
+				if ( 'cloudfront_cache_invalidator_options' === $name ) {
+					return $this->blog_options[ $this->blog_id ] ?? $fallback;
+				}
 				return array_key_exists( $name, $this->options ) ? $this->options[ $name ] : $fallback;
+			}
+		);
+		Functions\when( 'get_current_blog_id' )->alias(
+			function () {
+				return $this->blog_id;
+			}
+		);
+		Functions\when( 'switch_to_blog' )->alias(
+			function ( $id ) {
+				$this->blog_stack[] = $this->blog_id;
+				$this->blog_id      = (int) $id;
+				return true;
+			}
+		);
+		Functions\when( 'restore_current_blog' )->alias(
+			function () {
+				$this->blog_id = (int) array_pop( $this->blog_stack );
+				return true;
 			}
 		);
 		Functions\when( 'current_action' )->justReturn( 'switch_theme' );
@@ -689,6 +741,144 @@ class InvalidationPathsTest extends TestCase {
 	}
 
 	/* ---------------------------------------------------------------
+	 * Post meta and WooCommerce stock
+	 * ------------------------------------------------------------- */
+
+	public function test_watched_meta_change_purges_the_post() {
+		$this->add_post( 8, 'product', 'runner', 'publish', array( 'product_cat' => array( 20 ) ) );
+
+		$this->manager->on_post_meta_changed( 1, 8, '_price' );
+		$this->manager->on_post_meta_changed( 2, 8, '_stock_status' );
+		$this->manager->flush();
+
+		$this->assertBatch(
+			array(
+				'/product/runner/',
+				'/product/runner/*',
+				'/shop/',
+				'/shop/*',
+				'/product-category/shoes/',
+				'/product-category/shoes/*',
+			)
+		);
+	}
+
+	/**
+	 * @dataProvider unwatched_meta_keys
+	 */
+	public function test_unwatched_meta_keys_send_nothing( string $key ) {
+		$this->add_post( 5, 'post', 'hello-world' );
+
+		$this->manager->on_post_meta_changed( 1, 5, $key );
+
+		$this->assertNothingSent();
+	}
+
+	public function unwatched_meta_keys(): array {
+		return array(
+			'edit lock'    => array( '_edit_lock' ),
+			'edit last'    => array( '_edit_last' ),
+			'oembed cache' => array( '_oembed_abc123' ),
+			'view counter' => array( 'post_views_count' ),
+			'custom field' => array( 'subtitle' ),
+		);
+	}
+
+	public function test_meta_keys_filter_adds_keys() {
+		Functions\when( 'apply_filters' )->alias(
+			function ( $hook, $value ) {
+				return 'notglossy_cloudfront_meta_keys' === $hook ? array_merge( $value, array( 'subtitle' ) ) : $value;
+			}
+		);
+		$this->add_post( 7, 'page', 'about' );
+
+		$this->manager->on_post_meta_changed( 1, 7, 'subtitle' );
+		$this->manager->flush();
+
+		$this->assertBatch( array( '/about/', '/about/*' ) );
+	}
+
+	public function test_meta_changes_on_non_public_posts_send_nothing() {
+		$this->add_post( 8, 'product', 'runner', 'draft' );
+		$this->add_post( 9, 'nav_menu_item', 'item' );
+
+		$this->manager->on_post_meta_changed( 1, 8, '_price' );
+		$this->manager->on_post_meta_changed( 1, 9, '_price' );
+
+		$this->assertNothingSent();
+	}
+
+	public function test_stock_change_on_a_variation_purges_the_parent_product() {
+		$this->add_post( 8, 'product', 'runner' );
+		$variation = new class() {
+			public function get_id() {
+				return 81;
+			}
+			public function get_parent_id() {
+				return 8;
+			}
+		};
+
+		$this->manager->on_product_changed( $variation );
+		$this->manager->flush();
+
+		$this->assertContains( '/product/runner/', $this->sent[0] );
+	}
+
+	public function test_stock_status_change_by_variation_id_purges_the_parent_product() {
+		$this->add_post( 8, 'product', 'runner' );
+		$variation              = $this->add_post( 81, 'product_variation', 'runner-red' );
+		$variation->post_parent = 8;
+
+		$this->manager->on_product_changed( 81 );
+		$this->manager->flush();
+
+		$this->assertContains( '/product/runner/', $this->sent[0] );
+	}
+
+	/* ---------------------------------------------------------------
+	 * Multisite
+	 * ------------------------------------------------------------- */
+
+	public function test_switched_site_content_goes_to_that_sites_distribution() {
+		$this->settings_manager->set_settings(
+			array(
+				'invalidation_paths' => '/*',
+				'distribution_id'    => 'E1MAINSITE0001',
+			)
+		);
+		$this->blog_options[2] = array(
+			'invalidation_paths' => '/*',
+			'distribution_id'    => 'E2SHOPSITE0002',
+		);
+
+		// A page saved on site 2 from a request that started on site 1.
+		switch_to_blog( 2 );
+		$this->save( $this->add_post( 7, 'page', 'shop-page' ) );
+		restore_current_blog();
+
+		$this->save( $this->add_post( 8, 'page', 'main-page' ) );
+		$this->manager->flush();
+
+		$this->assertCount( 2, $this->sent, 'One batch per site' );
+		$by_distribution = array_combine( $this->sent_distributions, $this->sent );
+		$this->assertSame( array( '/main-page/', '/main-page/*' ), $by_distribution['E1MAINSITE0001'] );
+		$this->assertSame( array( '/shop-page/', '/shop-page/*' ), $by_distribution['E2SHOPSITE0002'] );
+		$this->assertSame( 1, $this->blog_id, 'The original site is restored after flushing' );
+	}
+
+	public function test_settings_are_read_per_site_after_switching() {
+		$this->settings_manager->set_settings( array( 'distribution_id' => 'E1MAINSITE0001' ) );
+		$this->blog_options[2] = array( 'distribution_id' => 'E2SHOPSITE0002' );
+
+		$this->assertSame( 'E1MAINSITE0001', $this->settings_manager->get_setting( 'distribution_id' ) );
+		switch_to_blog( 2 );
+		$this->assertSame( 'E2SHOPSITE0002', $this->settings_manager->get_setting( 'distribution_id' ) );
+		restore_current_blog();
+		$this->assertSame( 'E1MAINSITE0001', $this->settings_manager->get_setting( 'distribution_id' ) );
+	}
+
+	/* ---------------------------------------------------------------
 	 * Hook registration
 	 * ------------------------------------------------------------- */
 
@@ -708,6 +898,12 @@ class InvalidationPathsTest extends TestCase {
 			'switch_theme'              => 'queue_default_paths',
 			'customize_save_after'      => 'queue_default_paths',
 			'wp_update_nav_menu'        => 'queue_default_paths',
+			'added_post_meta'           => 'on_post_meta_changed',
+			'updated_post_meta'         => 'on_post_meta_changed',
+			'deleted_post_meta'         => 'on_post_meta_changed',
+			'woocommerce_product_set_stock'        => 'on_product_changed',
+			'woocommerce_variation_set_stock'      => 'on_product_changed',
+			'woocommerce_product_set_stock_status' => 'on_product_changed',
 			'shutdown'                  => 'flush',
 		);
 
