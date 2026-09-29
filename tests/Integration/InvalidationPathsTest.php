@@ -836,6 +836,28 @@ class InvalidationPathsTest extends TestCase {
 		$this->assertContains( '/product/runner/', $this->sent[0] );
 	}
 
+	public function test_watched_meta_on_a_variation_purges_the_parent_product() {
+		$this->add_post( 8, 'product', 'runner' );
+		$variation              = $this->add_post( 81, 'product_variation', 'runner-red' );
+		$variation->post_parent = 8;
+
+		$this->manager->on_post_meta_changed( 1, 81, '_price' );
+		$this->manager->flush();
+
+		$this->assertContains( '/product/runner/', $this->sent[0] );
+	}
+
+	public function test_a_post_changed_again_after_a_flush_is_queued_again() {
+		$this->add_post( 8, 'product', 'runner' );
+
+		$this->manager->on_post_meta_changed( 1, 8, '_stock' );
+		$this->manager->flush();
+		$this->manager->on_post_meta_changed( 2, 8, '_stock' );
+		$this->manager->flush();
+
+		$this->assertCount( 2, $this->sent, 'Long-running processes (WP-CLI, Action Scheduler) must not drop later changes' );
+	}
+
 	/* ---------------------------------------------------------------
 	 * Multisite
 	 * ------------------------------------------------------------- */
@@ -904,6 +926,7 @@ class InvalidationPathsTest extends TestCase {
 			'woocommerce_product_set_stock'        => 'on_product_changed',
 			'woocommerce_variation_set_stock'      => 'on_product_changed',
 			'woocommerce_product_set_stock_status' => 'on_product_changed',
+			'woocommerce_variation_set_stock_status' => 'on_product_changed',
 			'shutdown'                  => 'flush',
 		);
 

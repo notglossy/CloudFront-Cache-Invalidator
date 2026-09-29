@@ -110,11 +110,12 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	private $reasons = array();
 
 	/**
-	 * Posts whose paths were already queued for a meta change in this request.
+	 * Posts whose paths are already queued for a meta or stock change, keyed
+	 * by blog ID and then post ID. Cleared when that blog's batch is sent.
 	 *
 	 * @since 1.2.3
 	 * @access private
-	 * @var array<string,true>
+	 * @var array<int,array<int,true>>
 	 */
 	private $meta_queued_posts = array();
 
@@ -350,11 +351,8 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 				$product_id = (int) $product->get_parent_id();
 			}
 		} elseif ( is_numeric( $product ) ) {
+			// Variation IDs are resolved to the parent in queue_post_for_data_change().
 			$product_id = (int) $product;
-			$post       = get_post( $product_id );
-			if ( $post instanceof WP_Post && 'product_variation' === $post->post_type && $post->post_parent ) {
-				$product_id = (int) $post->post_parent;
-			}
 		}
 
 		if ( $product_id ) {
@@ -394,17 +392,25 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * @return void
 	 */
 	private function queue_post_for_data_change( $post_id, $reason ) {
-		$key = $this->current_blog_id() . ':' . $post_id;
-		if ( isset( $this->meta_queued_posts[ $key ] ) ) {
-			return;
-		}
-
 		$post = get_post( $post_id );
-		if ( ! $post instanceof WP_Post || wp_is_post_revision( $post ) || ! $this->is_post_viewable( $post ) ) {
+		if ( ! $post instanceof WP_Post || wp_is_post_revision( $post ) ) {
 			return;
 		}
 
-		$this->meta_queued_posts[ $key ] = true;
+		// Variations are not viewable themselves; their parent product is.
+		if ( 'product_variation' === $post->post_type && $post->post_parent ) {
+			$post = get_post( (int) $post->post_parent );
+			if ( ! $post instanceof WP_Post ) {
+				return;
+			}
+		}
+
+		$blog_id = $this->current_blog_id();
+		if ( isset( $this->meta_queued_posts[ $blog_id ][ $post->ID ] ) || ! $this->is_post_viewable( $post ) ) {
+			return;
+		}
+
+		$this->meta_queued_posts[ $blog_id ][ $post->ID ] = true;
 		$this->queue_paths( $this->get_post_paths( $post ), $reason );
 	}
 
@@ -654,7 +660,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 		$reasons = isset( $this->reasons[ $blog_id ] ) ? array_values( array_unique( $this->reasons[ $blog_id ] ) ) : array();
 
 		// Reset first so a listener that queues more paths cannot loop.
-		unset( $this->queue[ $blog_id ], $this->queue_defaults[ $blog_id ], $this->reasons[ $blog_id ] );
+		unset( $this->queue[ $blog_id ], $this->queue_defaults[ $blog_id ], $this->reasons[ $blog_id ], $this->meta_queued_posts[ $blog_id ] );
 
 		/**
 		 * Filter the paths sent to CloudFront for this request.

@@ -148,6 +148,39 @@ class MultisiteAccessTest extends TestCase {
 	}
 
 	/**
+	 * Saving the form while settings are pinned must not overwrite their stored
+	 * values: the IAM checkbox is disabled and submits nothing.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_saving_keeps_stored_values_of_pinned_settings() {
+		define( 'CLOUDFRONT_USE_IAM_ROLE', true );
+		define( 'CLOUDFRONT_DISTRIBUTION_ID', 'E1PINNEDVALUE01' );
+
+		$stored = array(
+			'use_iam_role'    => '1',
+			'distribution_id' => 'E1STOREDVALUE01',
+			'aws_region'      => 'eu-west-2',
+		);
+		Functions\when( 'get_option' )->justReturn( $stored );
+		Functions\when( 'sanitize_text_field' )->alias( 'trim' );
+		Functions\when( 'add_settings_error' )->justReturn( null );
+
+		// What the browser submits: no checkbox, the read-only pinned ID, a new region.
+		$result = $this->settings_manager->validate_settings(
+			array(
+				'distribution_id' => 'E1PINNEDVALUE01',
+				'aws_region'      => 'us-west-2',
+			)
+		);
+
+		$this->assertSame( '1', $result['use_iam_role'] );
+		$this->assertSame( 'E1STOREDVALUE01', $result['distribution_id'] );
+		$this->assertSame( 'us-west-2', $result['aws_region'], 'Unpinned settings still save' );
+	}
+
+	/**
 	 * @runInSeparateProcess
 	 * @preserveGlobalState disabled
 	 */

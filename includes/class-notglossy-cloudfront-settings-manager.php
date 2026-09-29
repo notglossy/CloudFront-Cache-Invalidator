@@ -814,6 +814,21 @@ class NotGlossy_CloudFront_Settings_Manager {
 			}
 		}
 
+		// Settings pinned by a constant are read-only in the form (and a disabled
+		// checkbox submits nothing), so keep the stored value for when the
+		// constant is removed.
+		foreach ( array_keys( self::CONSTANT_OVERRIDES ) as $pinned_key ) {
+			if ( null === $this->get_constant_override( $pinned_key ) ) {
+				continue;
+			}
+
+			if ( array_key_exists( $pinned_key, $stored ) ) {
+				$new_input[ $pinned_key ] = $stored[ $pinned_key ];
+			} else {
+				unset( $new_input[ $pinned_key ] );
+			}
+		}
+
 		// Credentials last, so the encrypted values can never be overwritten by stale data.
 		if ( null !== $this->credential_manager ) {
 			$new_input = $this->credential_manager->process_credential_submission( $input, $new_input );
