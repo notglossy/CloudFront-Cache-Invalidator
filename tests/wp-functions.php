@@ -7,6 +7,11 @@
  * @package CloudFrontCacheInvalidator
  */
 
+if ( 'cli' !== PHP_SAPI ) {
+	http_response_code( 404 );
+	exit;
+}
+
 if ( ! function_exists( 'get_current_blog_id' ) ) {
 	function get_current_blog_id() {
 		return 1;

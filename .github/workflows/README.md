@@ -17,15 +17,9 @@ Runs on every push to `main` and `develop` branches, and on all pull requests.
 - **Standards**: WordPress-Core and WordPress-Extra (WPCS)
 
 ##### 2. Tests (Matrix)
-- **PHP Versions**: 7.4, 8.0, 8.1, 8.2, 8.3
-- **Purpose**: Run PHPUnit tests across multiple PHP versions
+- **PHP Versions**: 8.1, 8.2, 8.3, 8.4
+- **Purpose**: Run PHPUnit tests across supported PHP versions
 - **Command**: `composer test`
-- **Tests**: 60 unit tests with 182 assertions
-- **Coverage**:
-  - Encryption/Decryption (CRITICAL)
-  - Path Sanitization (HIGH)
-  - Input Validation (HIGH)
-  - Credential Resolution (MEDIUM)
 
 ##### 3. Code Coverage
 - **PHP Version**: 8.1 with Xdebug
@@ -37,6 +31,29 @@ Runs on every push to `main` and `develop` branches, and on all pull requests.
 - **PHP Version**: 8.1
 - **Purpose**: Check for known security vulnerabilities in dependencies
 - **Command**: `composer audit`
+
+##### 5. Production build
+- **PHP Version**: 8.1
+- **Purpose**: Build the release zip exactly as the Release workflow does, then verify it
+- **Command**: `bin/build-release.sh`
+- **Checks**: checksum matches, no development files (`tests/`, `vendor/phpunit`, Composer manifests, ...), plugin files lint, and `vendor/autoload.php` loads the AWS SDK
+
+#### Hardening
+- `permissions: contents: read` at workflow level
+- Every action pinned to a full commit SHA, with the version in a trailing comment
+- `persist-credentials: false` on every checkout
+- Dependabot (`.github/dependabot.yml`) proposes weekly grouped updates for Composer and GitHub Actions
+
+### Release Workflow (`release.yml`)
+
+Runs when a `v*` tag is pushed.
+
+1. Checks that the tag, the plugin `Version` header and `NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION` agree
+2. Builds the zip with `bin/build-release.sh` (`--no-dev`, `export-ignore` rules)
+3. Creates a build provenance attestation (`gh attestation verify <zip> --repo notglossy/CloudFront-Cache-Invalidator`)
+4. Creates the GitHub release, or updates its assets, with the zip and its `.sha256`
+
+Only this job gets `contents: write`, `id-token: write` and `attestations: write`.
 
 ### AI PR Review (`pr-review.md` / `pr-review.lock.yml`)
 

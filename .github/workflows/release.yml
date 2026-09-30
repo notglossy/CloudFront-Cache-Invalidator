@@ -1,0 +1,62 @@
+name: Release
+
+# Builds the installable plugin zip for a version tag (e.g. v1.2.4) and
+# attaches it, with a SHA-256 checksum and a build provenance attestation,
+# to the GitHub release.
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the release and upload assets
+      id-token: write      # sign the provenance attestation
+      attestations: write  # store the attestation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.1'
+          coverage: none
+          tools: composer
+
+      - name: Check the tag matches the plugin version
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/^[[:space:]]*\*[[:space:]]*Version:[[:space:]]*//p' cloudfront-cache-invalidator.php | head -n1 | tr -d '[:space:]')"
+          CONSTANT="$(sed -n "s/.*define( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION', '\([^']*\)' );.*/\1/p" cloudfront-cache-invalidator.php)"
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ] || [ "$VERSION" != "$CONSTANT" ]; then
+            echo "Tag $GITHUB_REF_NAME, Version header $VERSION and version constant $CONSTANT must match." >&2
+            exit 1
+          fi
+
+      - name: Build release zip
+        run: bin/build-release.sh "$RUNNER_TEMP/dist"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/dist/cloudfront-cache-invalidator-*.zip
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP"/dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP"/dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+          fi

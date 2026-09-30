@@ -1,1 +1,16 @@
 .github/workflows/*.lock.yml linguist-generated=true
+
+# Keep development files out of `git archive` (GitHub source archives and
+# bin/build-release.sh). composer.json/composer.lock stay in the archive so the
+# build can install dependencies; the build script deletes them afterwards.
+/.github            export-ignore
+/bin                export-ignore
+/tests              export-ignore
+/.editorconfig      export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/phpcs.xml.dist     export-ignore
+/phpunit.xml.dist   export-ignore
+
+# Shell scripts must keep LF line endings.
+*.sh text eol=lf

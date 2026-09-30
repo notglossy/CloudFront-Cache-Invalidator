@@ -5,6 +5,12 @@
  * @package CloudFrontCacheInvalidator
  */
 
+// Never run from a web request (e.g. a git-clone install in wp-content/plugins).
+if ( 'cli' !== PHP_SAPI ) {
+	http_response_code( 404 );
+	exit;
+}
+
 // Load Composer autoloader.
 require_once dirname( __DIR__ ) . '/vendor/autoload.php';
 
