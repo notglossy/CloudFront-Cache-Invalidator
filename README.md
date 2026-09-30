@@ -146,6 +146,22 @@ If your WordPress site is not hosted on AWS, you can use traditional access keys
 - **Migration Support**: Automatically migrates legacy plaintext credentials to encrypted storage
 - **Environment Variable Support**: Supports loading credentials from constants or environment variables
 
+### Pinning settings in wp-config.php
+
+These constants override the settings page, which then shows the field as read-only:
+
+```php
+define( 'CLOUDFRONT_DISTRIBUTION_ID', 'E1ABCDEFGHIJKL' );
+define( 'CLOUDFRONT_AWS_REGION', 'us-east-1' );
+define( 'CLOUDFRONT_USE_IAM_ROLE', true ); // or false to force access-key mode
+```
+
+### Multisite
+
+- **Who can configure the plugin.** On a multisite network, the settings page, saving settings and the manual "Invalidate All" button require `manage_network_options` (Super Admins). Sub-site administrators cannot change the distribution ID, region, IAM mode or keys. AWS credentials from constants, environment variables or an instance role are shared by every site, so letting a sub-site admin set the distribution ID would let them invalidate any distribution those credentials can reach. Use the `notglossy_cloudfront_settings_capability` filter to change the capability.
+- **Per-site settings.** Each site keeps its own settings. Content changed on another site during a request, for example under `switch_to_blog()`, is sent to that site's distribution with that site's settings.
+- **Recommended.** Scope the IAM policy to the distributions the network actually uses, rather than `distribution/*`.
+
 ## Usage
 
 ### Automatic Invalidation
@@ -156,6 +172,8 @@ Once configured, the plugin will automatically trigger cache invalidations when:
 - A published post's slug, parent, date or terms change (the old URL is purged too)
 - Comments on a published post are approved, edited, unapproved, spammed, trashed or deleted
 - Public categories, tags, or custom taxonomy terms are updated, renamed or deleted
+- Watched post meta changes on a published post (WooCommerce price and stock by default, see below)
+- WooCommerce stock quantity or stock status changes, including stock reduced by an order
 - The theme is changed
 - Permalink structure is updated
 - Plugins are activated or deactivated
@@ -178,6 +196,19 @@ Content changes never purge the whole distribution. Drafts, pending, private and
 All paths collected during a request (for example a bulk edit) are sent as **one** invalidation when the request ends. A batch that would exceed CloudFront's limits (more than 15 wildcard paths or 3,000 paths) is sent as a single `/*` instead of being rejected.
 
 Automatic invalidation is skipped while `WP_IMPORTING` is set or `wp_suspend_cache_invalidation()` is active.
+
+### Post meta changes
+
+Changes that only touch post meta invalidate the post when the meta key is on an allowlist. By default the list holds the WooCommerce price and stock keys: `_price`, `_regular_price`, `_sale_price`, `_stock`, `_stock_status` and `_backorders`. The plugin uses an allowlist rather than reacting to every meta change, because many plugins write meta on each page view, such as view counters and oEmbed caches. Reacting to those would send a billed invalidation for every visit.
+
+Add the keys your theme renders with the `notglossy_cloudfront_meta_keys` filter:
+
+```php
+add_filter( 'notglossy_cloudfront_meta_keys', function ( $keys ) {
+    $keys[] = 'subtitle';
+    return $keys;
+} );
+```
 
 ### Manual Invalidation
 
@@ -259,6 +290,8 @@ The plugin provides hooks for logging and monitoring:
 - `notglossy_cloudfront_invalidation_error`: Fired when an invalidation request fails
 - `notglossy_cloudfront_invalidation_paths` (filter): Receives the paths for the request's batch and the reasons they were queued (`post_saved`, `term_updated`, `comment_changed`, `switch_theme`, ...). Return a modified array to remap paths, or an empty array to skip the invalidation.
 - `notglossy_cloudfront_client_config` (filter): Adjust the AWS SDK client configuration
+- `notglossy_cloudfront_meta_keys` (filter): Post meta keys that invalidate a post when they change
+- `notglossy_cloudfront_settings_capability` (filter): Capability required to manage the plugin
 
 You can use these hooks to implement custom logging or monitoring solutions.
 
@@ -391,6 +424,13 @@ For support, feature requests, or bug reports, please [create an issue](https://
 Developed by Not Glossy, LLC
 
 ## Changelog
+
+### 1.2.3
+- Security: on multisite, configuring the plugin and running a manual invalidation require `manage_network_options`, so sub-site administrators can no longer point the network's AWS credentials at another distribution (filterable with `notglossy_cloudfront_settings_capability`)
+- Fixed: on multisite, content changed under `switch_to_blog()` is sent to that site's distribution with that site's settings, instead of the site the request started on
+- Added: `CLOUDFRONT_DISTRIBUTION_ID`, `CLOUDFRONT_AWS_REGION` and `CLOUDFRONT_USE_IAM_ROLE` constants
+- Added: post meta changes invalidate the post for allowlisted keys (WooCommerce price and stock by default; `notglossy_cloudfront_meta_keys` filter)
+- Added: WooCommerce stock quantity and stock status changes, including stock reduced by orders, invalidate the product (variations purge the parent)
 
 ### 1.2.2
 - Fixed: publishing a post on default reading settings, saving a draft, private or scheduled post, and saving content from private taxonomies no longer purges the entire distribution (`/*`)

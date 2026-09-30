@@ -65,31 +65,59 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	private $cloudfront_client;
 
 	/**
-	 * Paths queued during this request, keyed by path.
+	 * Meta keys watched by default: WooCommerce price and stock.
+	 *
+	 * @since 1.2.3
+	 * @var string[]
+	 */
+	const DEFAULT_META_KEYS = array(
+		'_price',
+		'_regular_price',
+		'_sale_price',
+		'_stock',
+		'_stock_status',
+		'_backorders',
+	);
+
+	/**
+	 * Paths queued during this request, keyed by blog ID and then by path.
+	 *
+	 * Multisite: content saved under switch_to_blog() belongs to that site's
+	 * distribution, so each site's paths are sent with its own settings.
 	 *
 	 * @since 1.2.2
 	 * @access private
-	 * @var array<string,true>
+	 * @var array<int,array<string,true>>
 	 */
 	private $queue = array();
 
 	/**
-	 * Whether the configured default (site-wide) paths are queued.
+	 * Blog IDs whose configured default (site-wide) paths are queued.
 	 *
 	 * @since 1.2.2
 	 * @access private
-	 * @var bool
+	 * @var array<int,true>
 	 */
-	private $queue_defaults = false;
+	private $queue_defaults = array();
 
 	/**
-	 * Why paths were queued, for the paths filter.
+	 * Why paths were queued, keyed by blog ID, for the paths filter.
 	 *
 	 * @since 1.2.2
 	 * @access private
-	 * @var string[]
+	 * @var array<int,string[]>
 	 */
 	private $reasons = array();
+
+	/**
+	 * Posts whose paths are already queued for a meta or stock change, keyed
+	 * by blog ID and then post ID. Cleared when that blog's batch is sent.
+	 *
+	 * @since 1.2.3
+	 * @access private
+	 * @var array<int,array<int,true>>
+	 */
+	private $meta_queued_posts = array();
 
 	/**
 	 * Term archive paths captured before a term is edited, keyed by term ID.
@@ -126,6 +154,17 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 		add_action( 'wp_after_insert_post', array( $this, 'on_post_saved' ), 10, 4 );
 		add_action( 'set_object_terms', array( $this, 'on_object_terms_set' ), 10, 6 );
 		add_action( 'before_delete_post', array( $this, 'on_post_deleting' ), 10, 2 );
+
+		// Post meta (allowlisted keys only, see get_watched_meta_keys()).
+		add_action( 'added_post_meta', array( $this, 'on_post_meta_changed' ), 10, 3 );
+		add_action( 'updated_post_meta', array( $this, 'on_post_meta_changed' ), 10, 3 );
+		add_action( 'deleted_post_meta', array( $this, 'on_post_meta_changed' ), 10, 3 );
+
+		// WooCommerce writes stock with direct SQL, so post meta hooks do not fire.
+		add_action( 'woocommerce_product_set_stock', array( $this, 'on_product_changed' ) );
+		add_action( 'woocommerce_variation_set_stock', array( $this, 'on_product_changed' ) );
+		add_action( 'woocommerce_product_set_stock_status', array( $this, 'on_product_changed' ) );
+		add_action( 'woocommerce_variation_set_stock_status', array( $this, 'on_product_changed' ) );
 
 		// Comments.
 		add_action( 'transition_comment_status', array( $this, 'on_comment_status_transition' ), 10, 3 );
@@ -271,6 +310,111 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	}
 
 	/**
+	 * Queue a viewable post's paths when a watched meta key changes.
+	 *
+	 * Only allowlisted keys count (WooCommerce price and stock by default),
+	 * because plugins such as view counters write meta on every page view.
+	 *
+	 * @since 1.2.3
+	 * @access public
+	 * @param int|int[] $meta_ids  Meta ID(s).
+	 * @param int       $object_id Post ID.
+	 * @param string    $meta_key  Meta key.
+	 * @return void
+	 */
+	public function on_post_meta_changed( $meta_ids, $object_id, $meta_key ) {
+		unset( $meta_ids );
+
+		if ( ! is_string( $meta_key ) || ! in_array( $meta_key, $this->get_watched_meta_keys(), true ) ) {
+			return;
+		}
+
+		$this->queue_post_for_data_change( (int) $object_id, 'post_meta_changed' );
+	}
+
+	/**
+	 * Queue a WooCommerce product's paths after a stock change.
+	 *
+	 * Variations purge their parent product.
+	 *
+	 * @since 1.2.3
+	 * @access public
+	 * @param mixed $product WC_Product object or product ID.
+	 * @return void
+	 */
+	public function on_product_changed( $product ) {
+		$product_id = 0;
+
+		if ( is_object( $product ) && method_exists( $product, 'get_id' ) ) {
+			$product_id = (int) $product->get_id();
+			if ( method_exists( $product, 'get_parent_id' ) && (int) $product->get_parent_id() ) {
+				$product_id = (int) $product->get_parent_id();
+			}
+		} elseif ( is_numeric( $product ) ) {
+			// Variation IDs are resolved to the parent in queue_post_for_data_change().
+			$product_id = (int) $product;
+		}
+
+		if ( $product_id ) {
+			$this->queue_post_for_data_change( $product_id, 'product_stock_changed' );
+		}
+	}
+
+	/**
+	 * Meta keys whose changes invalidate the post.
+	 *
+	 * @since 1.2.3
+	 * @access public
+	 * @return string[]
+	 */
+	public function get_watched_meta_keys() {
+		/**
+		 * Filter the post meta keys that invalidate a post when they change.
+		 *
+		 * Add the keys your theme renders (for example ACF fields). Avoid keys
+		 * that change on every page view, such as view counters.
+		 *
+		 * @since 1.2.3
+		 * @param string[] $meta_keys Meta keys. Default WooCommerce price and stock keys.
+		 */
+		$keys = apply_filters( 'notglossy_cloudfront_meta_keys', self::DEFAULT_META_KEYS );
+
+		return is_array( $keys ) ? array_values( array_filter( $keys, 'is_string' ) ) : array();
+	}
+
+	/**
+	 * Queue a post's paths once per request for data changes (meta, stock).
+	 *
+	 * @since 1.2.3
+	 * @access private
+	 * @param int    $post_id Post ID.
+	 * @param string $reason  Reason.
+	 * @return void
+	 */
+	private function queue_post_for_data_change( $post_id, $reason ) {
+		$post = get_post( $post_id );
+		if ( ! $post instanceof WP_Post || wp_is_post_revision( $post ) ) {
+			return;
+		}
+
+		// Variations are not viewable themselves; their parent product is.
+		if ( 'product_variation' === $post->post_type && $post->post_parent ) {
+			$post = get_post( (int) $post->post_parent );
+			if ( ! $post instanceof WP_Post ) {
+				return;
+			}
+		}
+
+		$blog_id = $this->current_blog_id();
+		if ( isset( $this->meta_queued_posts[ $blog_id ][ $post->ID ] ) || ! $this->is_post_viewable( $post ) ) {
+			return;
+		}
+
+		$this->meta_queued_posts[ $blog_id ][ $post->ID ] = true;
+		$this->queue_paths( $this->get_post_paths( $post ), $reason );
+	}
+
+	/**
 	 * Queue the post page when a comment is approved or leaves the approved state.
 	 *
 	 * @since 1.2.2
@@ -398,8 +542,9 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 			return;
 		}
 
-		$this->queue_defaults = true;
-		$this->reasons[]      = current_action() ? current_action() : 'site_wide';
+		$blog_id                          = $this->current_blog_id();
+		$this->queue_defaults[ $blog_id ] = true;
+		$this->reasons[ $blog_id ][]      = current_action() ? current_action() : 'site_wide';
 	}
 
 	/* -------------------------------------------------------------
@@ -420,25 +565,31 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 			return;
 		}
 
+		$blog_id = $this->current_blog_id();
 		foreach ( $paths as $path ) {
 			if ( is_string( $path ) && '' !== $path ) {
-				$this->queue[ $path ] = true;
+				$this->queue[ $blog_id ][ $path ] = true;
 			}
 		}
-		$this->reasons[] = $reason;
+		$this->reasons[ $blog_id ][] = $reason;
 	}
 
 	/**
-	 * Get the paths the next flush would send, before filtering.
+	 * Get the paths the next flush would send for a site, before filtering.
+	 *
+	 * Must be called while that site is the current blog, because the default
+	 * paths come from its settings.
 	 *
 	 * @since 1.2.2
 	 * @access public
+	 * @param int|null $blog_id Blog ID. Defaults to the current blog.
 	 * @return string[]
 	 */
-	public function get_queued_paths() {
-		$paths = array_keys( $this->queue );
+	public function get_queued_paths( $blog_id = null ) {
+		$blog_id = null === $blog_id ? $this->current_blog_id() : (int) $blog_id;
+		$paths   = isset( $this->queue[ $blog_id ] ) ? array_keys( $this->queue[ $blog_id ] ) : array();
 
-		if ( $this->queue_defaults ) {
+		if ( ! empty( $this->queue_defaults[ $blog_id ] ) ) {
 			$paths = array_merge( $this->get_default_paths(), $paths );
 		}
 
@@ -453,29 +604,70 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	}
 
 	/**
-	 * Send the queued paths as a single invalidation batch.
+	 * Send the queued paths, one invalidation batch per site.
 	 *
-	 * Runs on shutdown. Batches that exceed CloudFront's wildcard or path
-	 * limits are collapsed to a full purge rather than being rejected.
+	 * Runs on shutdown. On multisite, each site's batch is sent while that
+	 * site is switched in, so it uses that site's distribution and settings.
+	 * Batches that exceed CloudFront's wildcard or path limits are collapsed
+	 * to a full purge rather than being rejected.
 	 *
 	 * @since 1.2.2
 	 * @access public
-	 * @return mixed|null Client result, WP_Error, or null when nothing was queued.
+	 * @return mixed|null Result for the last batch sent (client result or WP_Error), or null when nothing was sent.
 	 */
 	public function flush() {
-		$paths   = $this->get_queued_paths();
-		$reasons = array_values( array_unique( $this->reasons ) );
+		$blog_ids = array_unique( array_merge( array_keys( $this->queue ), array_keys( $this->queue_defaults ) ) );
+		$current  = $this->current_blog_id();
+		$result   = null;
+
+		// Send the current site's batch first; it needs no switch.
+		usort(
+			$blog_ids,
+			function ( $a, $b ) use ( $current ) {
+				return ( $b === $current ) <=> ( $a === $current );
+			}
+		);
+
+		foreach ( $blog_ids as $blog_id ) {
+			$switched = $blog_id !== $current && function_exists( 'switch_to_blog' );
+			if ( $switched ) {
+				switch_to_blog( $blog_id );
+			}
+
+			$batch_result = $this->flush_blog( $blog_id );
+			if ( null !== $batch_result ) {
+				$result = $batch_result;
+			}
+
+			if ( $switched ) {
+				restore_current_blog();
+			}
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Send one site's queued paths. The site must be the current blog.
+	 *
+	 * @since 1.2.3
+	 * @access private
+	 * @param int $blog_id Blog ID.
+	 * @return mixed|null
+	 */
+	private function flush_blog( $blog_id ) {
+		$paths   = $this->get_queued_paths( $blog_id );
+		$reasons = isset( $this->reasons[ $blog_id ] ) ? array_values( array_unique( $this->reasons[ $blog_id ] ) ) : array();
 
 		// Reset first so a listener that queues more paths cannot loop.
-		$this->queue          = array();
-		$this->queue_defaults = false;
-		$this->reasons        = array();
+		unset( $this->queue[ $blog_id ], $this->queue_defaults[ $blog_id ], $this->reasons[ $blog_id ], $this->meta_queued_posts[ $blog_id ] );
 
 		/**
 		 * Filter the paths sent to CloudFront for this request.
 		 *
 		 * Return an empty array to skip the invalidation. Useful for mapping
-		 * WordPress URLs to a different CloudFront path layout.
+		 * WordPress URLs to a different CloudFront path layout. On multisite
+		 * this runs once per site, with that site switched in.
 		 *
 		 * @since 1.2.2
 		 * @param string[] $paths   Paths to invalidate.
@@ -567,6 +759,17 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 		}
 
 		return array_values( array_filter( array_map( 'trim', explode( "\n", $default_paths ) ) ) );
+	}
+
+	/**
+	 * Current blog ID (1 outside multisite).
+	 *
+	 * @since 1.2.3
+	 * @access private
+	 * @return int
+	 */
+	private function current_blog_id() {
+		return NotGlossy_CloudFront_Settings_Manager::current_blog_id();
 	}
 
 	/**

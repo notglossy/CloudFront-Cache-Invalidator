@@ -65,6 +65,27 @@ class NotGlossy_CloudFront_Settings_Manager {
 	private $current_settings = null;
 
 	/**
+	 * Blog ID the cached settings belong to (multisite).
+	 *
+	 * @since 1.2.3
+	 * @access private
+	 * @var int
+	 */
+	private $settings_blog_id = 0;
+
+	/**
+	 * Settings that can be pinned by a wp-config.php constant, keyed by setting.
+	 *
+	 * @since 1.2.3
+	 * @var array<string,string>
+	 */
+	const CONSTANT_OVERRIDES = array(
+		'distribution_id' => 'CLOUDFRONT_DISTRIBUTION_ID',
+		'aws_region'      => 'CLOUDFRONT_AWS_REGION',
+		'use_iam_role'    => 'CLOUDFRONT_USE_IAM_ROLE',
+	);
+
+	/**
 	 * Settings group name.
 	 *
 	 * @since 1.2.0
@@ -142,7 +163,8 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return array Plugin settings.
 	 */
 	public function get_settings() {
-		if ( is_array( $this->current_settings ) ) {
+		// The cache belongs to one site; after switch_to_blog() read that site's option.
+		if ( is_array( $this->current_settings ) && self::current_blog_id() === $this->settings_blog_id ) {
 			return $this->current_settings;
 		}
 
@@ -163,6 +185,11 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return mixed Setting value or fallback.
 	 */
 	public function get_setting( $key, $fallback = null ) {
+		$override = $this->get_constant_override( $key );
+		if ( null !== $override ) {
+			return $override;
+		}
+
 		$settings = $this->get_settings();
 
 		return array_key_exists( $key, $settings ) ? $settings[ $key ] : $fallback;
@@ -178,9 +205,9 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return bool True on success, false on failure.
 	 */
 	public function update_setting( $key, $value ) {
-		$settings               = $this->get_settings();
-		$settings[ $key ]       = $value;
-		$this->current_settings = $settings;
+		$settings         = $this->get_settings();
+		$settings[ $key ] = $value;
+		$this->set_settings( $settings );
 		return update_option( $this->settings_option, $settings );
 	}
 
@@ -194,6 +221,96 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 */
 	public function set_settings( array $settings ) {
 		$this->current_settings = $settings;
+		$this->settings_blog_id = self::current_blog_id();
+	}
+
+	/**
+	 * Current blog ID (1 outside multisite).
+	 *
+	 * @since 1.2.3
+	 * @access public
+	 * @return int
+	 */
+	public static function current_blog_id() {
+		return function_exists( 'get_current_blog_id' ) ? (int) get_current_blog_id() : 1;
+	}
+
+	/**
+	 * Whether this is a multisite network.
+	 *
+	 * @since 1.2.3
+	 * @access public
+	 * @return bool
+	 */
+	public static function is_network() {
+		return function_exists( 'is_multisite' ) && is_multisite();
+	}
+
+	/**
+	 * Value of a setting pinned by a wp-config.php constant, or null.
+	 *
+	 * Supported: CLOUDFRONT_DISTRIBUTION_ID, CLOUDFRONT_AWS_REGION and
+	 * CLOUDFRONT_USE_IAM_ROLE (true/false).
+	 *
+	 * @since 1.2.3
+	 * @access public
+	 * @param string $key Setting key.
+	 * @return string|null
+	 */
+	public function get_constant_override( $key ) {
+		if ( ! isset( self::CONSTANT_OVERRIDES[ $key ] ) || ! defined( self::CONSTANT_OVERRIDES[ $key ] ) ) {
+			return null;
+		}
+
+		$value = constant( self::CONSTANT_OVERRIDES[ $key ] );
+
+		if ( 'use_iam_role' === $key ) {
+			return filter_var( $value, FILTER_VALIDATE_BOOLEAN ) ? '1' : '0';
+		}
+
+		if ( 'distribution_id' === $key ) {
+			return strtoupper( trim( (string) $value ) );
+		}
+
+		return strtolower( trim( (string) $value ) );
+	}
+
+	/**
+	 * Capability required to view and change the plugin settings and to run
+	 * a manual invalidation.
+	 *
+	 * On multisite this defaults to manage_network_options, because the AWS
+	 * credentials (constants, environment variables, instance role) are shared
+	 * by every site and a sub-site administrator must not be able to point
+	 * them at an arbitrary distribution.
+	 *
+	 * @since 1.2.3
+	 * @access public
+	 * @return string
+	 */
+	public function get_required_capability() {
+		$capability = self::is_network() ? 'manage_network_options' : 'manage_options';
+
+		/**
+		 * Filter the capability required to manage CloudFront Cache Invalidator.
+		 *
+		 * @since 1.2.3
+		 * @param string $capability Capability name.
+		 */
+		return (string) apply_filters( 'notglossy_cloudfront_settings_capability', $capability );
+	}
+
+	/**
+	 * Capability for options.php saves of this settings group.
+	 *
+	 * Hooked to option_page_capability_{group}.
+	 *
+	 * @since 1.2.3
+	 * @access public
+	 * @return string
+	 */
+	public function filter_option_page_capability() {
+		return $this->get_required_capability();
 	}
 
 	/**
@@ -290,7 +407,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 		add_options_page(
 			'CloudFront Cache Invalidator',
 			'CloudFront Cache',
-			'manage_options',
+			$this->get_required_capability(),
 			'cloudfront-cache-invalidator',
 			array( $this, 'render_settings_page' )
 		);
@@ -321,10 +438,37 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return void
 	 */
 	public function use_iam_role_callback() {
-		$value = $this->get_setting( 'use_iam_role', '0' );
-		echo '<input type="checkbox" id="use_iam_role" name="' . esc_attr( $this->settings_option ) . '[use_iam_role]" value="1" ' . checked( '1', $value, false ) . '/>';
+		$value  = $this->get_setting( 'use_iam_role', '0' );
+		$pinned = null !== $this->get_constant_override( 'use_iam_role' );
+		echo '<input type="checkbox" id="use_iam_role" name="' . esc_attr( $this->settings_option ) . '[use_iam_role]" value="1" ' . checked( '1', $value, false ) . ( $pinned ? ' disabled' : '' ) . '/>';
 		echo '<label for="use_iam_role"> Use instance IAM role (recommended if your WordPress server is running on AWS)</label>';
 		echo '<p class="description">When enabled, the plugin uses the AWS SDK default credential chain (instance profile, container credentials, environment variables). Stored access keys are ignored while this is on.</p>';
+		$this->render_constant_notice( 'use_iam_role' );
+	}
+
+	/**
+	 * Note that a field is pinned by a constant.
+	 *
+	 * @since 1.2.3
+	 * @access private
+	 * @param string $key Setting key.
+	 * @return void
+	 */
+	private function render_constant_notice( $key ) {
+		if ( null === $this->get_constant_override( $key ) ) {
+			return;
+		}
+
+		printf(
+			'<p class="description"><strong>%s</strong></p>',
+			esc_html(
+				sprintf(
+					/* translators: %s: constant name */
+					__( 'Set by the %s constant in wp-config.php.', 'cloudfront-cache-invalidator' ),
+					self::CONSTANT_OVERRIDES[ $key ]
+				)
+			)
+		);
 	}
 
 	/**
@@ -429,9 +573,11 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return void
 	 */
 	public function aws_region_callback() {
-		$value = $this->get_setting( 'aws_region', 'us-east-1' );
-		echo '<input type="text" id="aws_region" name="' . esc_attr( $this->settings_option ) . '[aws_region]" value="' . esc_attr( $value ) . '" class="regular-text" />';
+		$value    = $this->get_setting( 'aws_region', 'us-east-1' );
+		$readonly = null !== $this->get_constant_override( 'aws_region' ) ? ' readonly' : '';
+		echo '<input type="text" id="aws_region" name="' . esc_attr( $this->settings_option ) . '[aws_region]" value="' . esc_attr( $value ) . '" class="regular-text"' . esc_attr( $readonly ) . ' />';
 		echo '<p class="description">AWS region (e.g., us-east-1, eu-west-2, ap-southeast-1). Default: us-east-1</p>';
+		$this->render_constant_notice( 'aws_region' );
 	}
 
 	/**
@@ -445,9 +591,11 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return void
 	 */
 	public function distribution_id_callback() {
-		$value = $this->get_setting( 'distribution_id', '' );
-		echo '<input type="text" id="distribution_id" name="' . esc_attr( $this->settings_option ) . '[distribution_id]" value="' . esc_attr( $value ) . '" class="regular-text" />';
+		$value    = $this->get_setting( 'distribution_id', '' );
+		$readonly = null !== $this->get_constant_override( 'distribution_id' ) ? ' readonly' : '';
+		echo '<input type="text" id="distribution_id" name="' . esc_attr( $this->settings_option ) . '[distribution_id]" value="' . esc_attr( $value ) . '" class="regular-text"' . esc_attr( $readonly ) . ' />';
 		echo '<p class="description">CloudFront Distribution ID (13-14 uppercase characters, e.g., E1ABCDEFGHIJKL)</p>';
+		$this->render_constant_notice( 'distribution_id' );
 	}
 
 	/**
@@ -666,6 +814,21 @@ class NotGlossy_CloudFront_Settings_Manager {
 			}
 		}
 
+		// Settings pinned by a constant are read-only in the form (and a disabled
+		// checkbox submits nothing), so keep the stored value for when the
+		// constant is removed.
+		foreach ( array_keys( self::CONSTANT_OVERRIDES ) as $pinned_key ) {
+			if ( null === $this->get_constant_override( $pinned_key ) ) {
+				continue;
+			}
+
+			if ( array_key_exists( $pinned_key, $stored ) ) {
+				$new_input[ $pinned_key ] = $stored[ $pinned_key ];
+			} else {
+				unset( $new_input[ $pinned_key ] );
+			}
+		}
+
 		// Credentials last, so the encrypted values can never be overwritten by stale data.
 		if ( null !== $this->credential_manager ) {
 			$new_input = $this->credential_manager->process_credential_submission( $input, $new_input );
@@ -674,7 +837,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 		}
 
 		// Keep in-memory reads consistent with what is about to be stored.
-		$this->current_settings = $new_input;
+		$this->set_settings( $new_input );
 
 		return $new_input;
 	}
@@ -690,7 +853,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * @return void
 	 */
 	public function render_settings_page() {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( $this->get_required_capability() ) ) {
 			wp_die( esc_html( __( 'You do not have sufficient permissions to access this page.', 'cloudfront-cache-invalidator' ) ) );
 		}
 		?>
