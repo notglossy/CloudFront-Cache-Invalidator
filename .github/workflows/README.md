@@ -103,12 +103,12 @@ Configure branch protection rules for `main`:
    - ✅ Require branches to be up to date before merging
 4. Select required status checks:
    - ✅ Code Style (PHPCS)
-   - ✅ Tests (PHP 7.4)
-   - ✅ Tests (PHP 8.0)
    - ✅ Tests (PHP 8.1)
    - ✅ Tests (PHP 8.2)
    - ✅ Tests (PHP 8.3)
+   - ✅ Tests (PHP 8.4)
    - ✅ Security Check
+   - ✅ Production build
 
 ## Badges
 

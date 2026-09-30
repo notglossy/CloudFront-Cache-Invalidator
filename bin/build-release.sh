@@ -40,7 +40,9 @@ for dev in tests vendor/phpunit vendor/brain vendor/mockery vendor/antecedent ve
 	fi
 done
 
+# Absolute path: zip runs from inside $BUILD, so a relative OUT would resolve there.
 mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"
 ZIP="$OUT/$SLUG-$VERSION.zip"
 rm -f "$ZIP" "$ZIP.sha256"
 (cd "$BUILD" && zip -rqX "$ZIP" "$SLUG")

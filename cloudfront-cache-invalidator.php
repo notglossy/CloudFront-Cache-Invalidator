@@ -61,6 +61,7 @@ function notglossy_cloudfront_php_version_notice() {
 // Disable the plugin, rather than the whole site, on unsupported PHP versions.
 if ( PHP_VERSION_ID < 80100 ) {
 	add_action( 'admin_notices', 'notglossy_cloudfront_php_version_notice' );
+	add_action( 'network_admin_notices', 'notglossy_cloudfront_php_version_notice' );
 	return;
 }
 
@@ -72,6 +73,7 @@ if ( ! class_exists( 'Aws\CloudFront\CloudFrontClient' ) ) {
 	} else {
 		// Show admin notice if AWS SDK is missing and autoload cannot be found.
 		add_action( 'admin_notices', 'notglossy_cloudfront_sdk_missing_notice' );
+		add_action( 'network_admin_notices', 'notglossy_cloudfront_sdk_missing_notice' );
 	}
 }
 
