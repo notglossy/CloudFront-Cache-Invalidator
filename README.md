@@ -34,34 +34,35 @@ CloudFront Cache Invalidator helps WordPress site owners who use Amazon CloudFro
 
 ## Installation
 
-### Method 1: WordPress Plugin Repository (Recommended)
+The plugin is distributed through GitHub releases only. It is **not** published on WordPress.org, so a plugin with a similar name found through **Plugins → Add New** is not this one. The plugin header sets `Update URI`, so WordPress 5.8+ never offers a WordPress.org package as an update to it.
 
-1. Log in to your WordPress admin dashboard
-2. Navigate to **Plugins → Add New**
-3. Search for "CloudFront Cache Invalidator"
-4. Click **Install Now** and then **Activate**
+### Method 1: Release zip (Recommended)
 
-### Method 2: Manual Installation
-
-1. Download the plugin zip file from the [releases page](https://github.com/notglossy/CloudFront-Cache-Invalidator/releases)
-2. In WordPress admin, go to **Plugins → Add New → Upload Plugin**
-3. Choose the downloaded zip file and click **Install Now**
+1. Download `cloudfront-cache-invalidator-<version>.zip` from the [releases page](https://github.com/notglossy/CloudFront-Cache-Invalidator/releases). It already contains the production dependencies. Do not use the "Source code" archives, which have no `vendor/` directory.
+2. Optionally verify the download:
+   ```bash
+   shasum -a 256 -c cloudfront-cache-invalidator-<version>.zip.sha256
+   gh attestation verify cloudfront-cache-invalidator-<version>.zip --repo notglossy/CloudFront-Cache-Invalidator
+   ```
+3. In WordPress admin, go to **Plugins → Add New → Upload Plugin**, choose the zip and click **Install Now**
 4. Activate the plugin
 
-### Method 3: Git Installation
+### Method 2: Git Installation
 
 1. Clone the repository to your `/wp-content/plugins/` directory:
    ```bash
    cd /path/to/wordpress/wp-content/plugins/
    git clone https://github.com/notglossy/CloudFront-Cache-Invalidator.git cloudfront-cache-invalidator
    ```
-2. Install dependencies:
+2. Install production dependencies only:
    ```bash
    cd cloudfront-cache-invalidator
-   composer install
-   composer require aws/aws-sdk-php
+   composer install --no-dev --optimize-autoloader
    ```
+   Never run a plain `composer install` in a web-accessible plugin directory. That installs the test and code-style tools into `vendor/`, where the web server can reach them.
 3. Activate the plugin through the WordPress admin dashboard
+
+A git checkout also contains `tests/`, `bin/` and CI configuration. The test bootstrap refuses to run outside the CLI, but prefer the release zip, or deny web access to those directories, on production servers.
 
 ### Post-Installation Setup
 
@@ -245,7 +246,7 @@ You can view the status of your invalidation requests in the AWS CloudFront cons
 ### Common Issues
 
 **AWS SDK Not Found**
-- Ensure you've run `composer require aws/aws-sdk-php` in the plugin directory
+- Install the release zip, which includes `vendor/`, or run `composer install --no-dev --optimize-autoloader` in the plugin directory
 - Check that the vendor directory exists and contains the AWS SDK
 - Verify the autoload.php file is present in the vendor directory
 
@@ -338,12 +339,25 @@ This plugin is licensed under the [GPL v3 or later](https://www.gnu.org/licenses
 ### Setup
 
 ```bash
-# Install dependencies (includes dev dependencies)
+# Install dependencies, including test and code-style tools (development only)
 composer install
-
-# Install AWS SDK
-composer require aws/aws-sdk-php
 ```
+
+### Building a release
+
+```bash
+bin/build-release.sh            # writes dist/cloudfront-cache-invalidator-<version>.zip and .sha256
+```
+
+The script exports the committed tree with `git archive`, which honours the `export-ignore` rules in `.gitattributes`. It installs production dependencies with `--no-dev`, removes the Composer manifests and refuses to package development files.
+
+To publish, update the `Version` header, the `NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION` constant and the changelog, merge, then push a matching tag:
+
+```bash
+git tag v1.2.4 && git push origin v1.2.4
+```
+
+The **Release** workflow checks that the tag matches both version strings. It builds the zip, creates a build provenance attestation and attaches the zip and its checksum to the GitHub release.
 
 ### Code Quality
 
@@ -400,6 +414,9 @@ GitHub Actions automatically runs tests on:
 - PHPUnit tests
 - Security vulnerability scanning
 - Code coverage reporting (optional Codecov integration)
+- A production build: the release zip is built with `--no-dev`, checked for development files, and must autoload the AWS SDK
+
+Workflows run with read-only `contents` permission. Every third-party action is pinned to a commit SHA, and checkouts do not persist the token. Dependabot proposes weekly updates for Composer dependencies and GitHub Actions.
 
 Every non-draft pull request from this repository also gets an AI review that posts inline
 comments for bugs, security issues and over-engineering. It requires an `AI_API_KEY`
@@ -424,6 +441,14 @@ For support, feature requests, or bug reports, please [create an issue](https://
 Developed by Not Glossy, LLC
 
 ## Changelog
+
+### 1.2.4
+- Security: the test bootstrap refuses to run outside the CLI, so git-clone installs cannot trigger it over HTTP
+- Security: the plugin header sets `Update URI`, so WordPress never offers a WordPress.org plugin with the same slug as an update
+- Changed: installation docs use the release zip or `composer install --no-dev`; the WordPress.org install method is removed because the plugin is not published there
+- Changed: on PHP older than 8.1 the plugin disables itself with an admin notice instead of Composer's platform check returning a 500 for the whole site
+- Added: release zips built with `--no-dev` and published for version tags, with a SHA-256 checksum and a build provenance attestation
+- CI: least-privilege permissions, actions pinned to commit SHAs, no persisted checkout token, a production-build check, and Dependabot for Composer and GitHub Actions
 
 ### 1.2.3
 - Security: on multisite, configuring the plugin and running a manual invalidation require `manage_network_options`, so sub-site administrators can no longer point the network's AWS credentials at another distribution (filterable with `notglossy_cloudfront_settings_capability`)

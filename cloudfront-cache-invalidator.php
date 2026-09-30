@@ -13,12 +13,13 @@
  * Plugin Name: CloudFront Cache Invalidator
  * Plugin URI: https://github.com/notglossy/CloudFront-Cache-Invalidator
  * Description: Automatically invalidates CloudFront cache when WordPress content is updated.
- * Version: 1.2.3
+ * Version: 1.2.4
  * Author: Not Glossy LLC
  * Author URI: https://github.com/notglossy
  * License: GPL3
  * Requires at least: 5.7
  * Requires PHP: 8.1
+ * Update URI: https://github.com/notglossy/CloudFront-Cache-Invalidator
  */
 
 // If this file is called directly, abort.
@@ -27,7 +28,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 if ( ! defined( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION' ) ) {
-	define( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION', '1.2.3' );
+	define( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION', '1.2.4' );
 }
 
 /**
@@ -45,6 +46,25 @@ function notglossy_cloudfront_sdk_missing_notice() {
 	echo '</p></div>';
 }
 
+/**
+ * Display admin notice when PHP is older than the plugin supports.
+ *
+ * @since 1.2.4
+ */
+function notglossy_cloudfront_php_version_notice() {
+	echo '<div class="notice notice-error"><p>';
+	echo '<strong>' . esc_html__( 'CloudFront Cache Invalidator Error:', 'cloudfront-cache-invalidator' ) . '</strong> ';
+	echo esc_html__( 'This plugin requires PHP 8.1 or higher and has been disabled.', 'cloudfront-cache-invalidator' );
+	echo '</p></div>';
+}
+
+// Disable the plugin, rather than the whole site, on unsupported PHP versions.
+if ( PHP_VERSION_ID < 80100 ) {
+	add_action( 'admin_notices', 'notglossy_cloudfront_php_version_notice' );
+	add_action( 'network_admin_notices', 'notglossy_cloudfront_php_version_notice' );
+	return;
+}
+
 // Include AWS SDK via Composer autoloader only if not already loaded by another plugin.
 $autoload_path = plugin_dir_path( __FILE__ ) . 'vendor/autoload.php';
 if ( ! class_exists( 'Aws\CloudFront\CloudFrontClient' ) ) {
@@ -53,6 +73,7 @@ if ( ! class_exists( 'Aws\CloudFront\CloudFrontClient' ) ) {
 	} else {
 		// Show admin notice if AWS SDK is missing and autoload cannot be found.
 		add_action( 'admin_notices', 'notglossy_cloudfront_sdk_missing_notice' );
+		add_action( 'network_admin_notices', 'notglossy_cloudfront_sdk_missing_notice' );
 	}
 }
 
