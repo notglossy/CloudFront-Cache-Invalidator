@@ -67,7 +67,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	/**
 	 * Blog ID the cached settings belong to (multisite).
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @var int
 	 */
@@ -76,7 +76,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	/**
 	 * Settings that can be pinned by a wp-config.php constant, keyed by setting.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @var array<string,string>
 	 */
 	const CONSTANT_OVERRIDES = array(
@@ -227,7 +227,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	/**
 	 * Current blog ID (1 outside multisite).
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @return int
 	 */
@@ -238,7 +238,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	/**
 	 * Whether this is a multisite network.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @return bool
 	 */
@@ -252,7 +252,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * Supported: CLOUDFRONT_DISTRIBUTION_ID, CLOUDFRONT_AWS_REGION and
 	 * CLOUDFRONT_USE_IAM_ROLE (true/false).
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @param string $key Setting key.
 	 * @return string|null
@@ -284,7 +284,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 * by every site and a sub-site administrator must not be able to point
 	 * them at an arbitrary distribution.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @return string
 	 */
@@ -294,7 +294,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 		/**
 		 * Filter the capability required to manage CloudFront Cache Invalidator.
 		 *
-		 * @since 1.2.3
+		 * @since 1.3.0
 		 * @param string $capability Capability name.
 		 */
 		return (string) apply_filters( 'notglossy_cloudfront_settings_capability', $capability );
@@ -305,7 +305,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	 *
 	 * Hooked to option_page_capability_{group}.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @return string
 	 */
@@ -449,7 +449,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	/**
 	 * Note that a field is pinned by a constant.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @param string $key Setting key.
 	 * @return void

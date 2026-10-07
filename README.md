@@ -425,7 +425,7 @@ Developed by Not Glossy, LLC
 
 ## Changelog
 
-### 1.2.3
+### 1.3.0
 - Security: on multisite, configuring the plugin and running a manual invalidation require `manage_network_options`, so sub-site administrators can no longer point the network's AWS credentials at another distribution (filterable with `notglossy_cloudfront_settings_capability`)
 - Fixed: on multisite, content changed under `switch_to_blog()` is sent to that site's distribution with that site's settings, instead of the site the request started on
 - Added: `CLOUDFRONT_DISTRIBUTION_ID`, `CLOUDFRONT_AWS_REGION` and `CLOUDFRONT_USE_IAM_ROLE` constants

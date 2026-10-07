@@ -67,7 +67,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Meta keys watched by default: WooCommerce price and stock.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @var string[]
 	 */
 	const DEFAULT_META_KEYS = array(
@@ -113,7 +113,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Posts whose paths are already queued for a meta or stock change, keyed
 	 * by blog ID and then post ID. Cleared when that blog's batch is sent.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @var array<int,array<int,true>>
 	 */
@@ -315,7 +315,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Only allowlisted keys count (WooCommerce price and stock by default),
 	 * because plugins such as view counters write meta on every page view.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @param int|int[] $meta_ids  Meta ID(s).
 	 * @param int       $object_id Post ID.
@@ -337,7 +337,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 *
 	 * Variations purge their parent product.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @param mixed $product WC_Product object or product ID.
 	 * @return void
@@ -363,7 +363,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Meta keys whose changes invalidate the post.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @return string[]
 	 */
@@ -374,7 +374,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 		 * Add the keys your theme renders (for example ACF fields). Avoid keys
 		 * that change on every page view, such as view counters.
 		 *
-		 * @since 1.2.3
+		 * @since 1.3.0
 		 * @param string[] $meta_keys Meta keys. Default WooCommerce price and stock keys.
 		 */
 		$keys = apply_filters( 'notglossy_cloudfront_meta_keys', self::DEFAULT_META_KEYS );
@@ -385,7 +385,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Queue a post's paths once per request for data changes (meta, stock).
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @param int    $post_id Post ID.
 	 * @param string $reason  Reason.
@@ -650,7 +650,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Send one site's queued paths. The site must be the current blog.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @param int $blog_id Blog ID.
 	 * @return mixed|null
@@ -764,7 +764,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Current blog ID (1 outside multisite).
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @return int
 	 */
