@@ -36,7 +36,7 @@ if ( ! defined( 'NOTGLOSSY_CLOUDFRONT_CACHE_INVALIDATOR_VERSION' ) ) {
  * Defined as a named function instead of a closure to avoid serialization
  * fatal errors when a persistent object cache (e.g. APCu) is active.
  *
- * @since 1.2.1
+ * @since 1.3.0
  */
 function notglossy_cloudfront_sdk_missing_notice() {
 	echo '<div class="notice notice-error"><p>';

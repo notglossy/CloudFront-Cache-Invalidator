@@ -47,7 +47,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	/**
 	 * Get the credential manager, if one has been attached.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access public
 	 * @return NotGlossy_CloudFront_Credential_Manager|null
 	 */
@@ -506,7 +506,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	/**
 	 * Placeholder text describing the state of the stored credentials.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access private
 	 * @return string
 	 */
@@ -530,7 +530,7 @@ class NotGlossy_CloudFront_Settings_Manager {
 	/**
 	 * Stored credentials status and "remove" checkbox.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access public
 	 * @return void
 	 */

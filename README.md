@@ -428,29 +428,25 @@ Developed by Not Glossy, LLC
 ### 1.3.0
 - Security: on multisite, configuring the plugin and running a manual invalidation require `manage_network_options`, so sub-site administrators can no longer point the network's AWS credentials at another distribution (filterable with `notglossy_cloudfront_settings_capability`)
 - Fixed: on multisite, content changed under `switch_to_blog()` is sent to that site's distribution with that site's settings, instead of the site the request started on
-- Added: `CLOUDFRONT_DISTRIBUTION_ID`, `CLOUDFRONT_AWS_REGION` and `CLOUDFRONT_USE_IAM_ROLE` constants
-- Added: post meta changes invalidate the post for allowlisted keys (WooCommerce price and stock by default; `notglossy_cloudfront_meta_keys` filter)
-- Added: WooCommerce stock quantity and stock status changes, including stock reduced by orders, invalidate the product (variations purge the parent)
-
-### 1.2.2
 - Fixed: publishing a post on default reading settings, saving a draft, private or scheduled post, and saving content from private taxonomies no longer purges the entire distribution (`/*`)
 - Fixed: deleting revisions, auto-drafts and menu items no longer purges the entire distribution; deleting a published post purges only its URL and listings
 - Fixed: changing a slug, parent or date now purges the old URL; renaming or deleting a term purges its old archive
 - Fixed: block editor (REST) saves purge the post's current terms, and removed terms are purged too
 - Fixed: wildcards are anchored (`/slug/*`) so they no longer match sibling URLs on permalink structures without a trailing slash
-- Added: comments (approve, unapprove, edit, spam, trash, delete) purge the post they belong to
-- Added: one batched invalidation per request, with a fallback to `/*` for batches over CloudFront's limits
-- Added: `notglossy_cloudfront_invalidation_paths` filter; `WP_IMPORTING` and `wp_suspend_cache_invalidation()` are respected
-- Changed: requires WordPress 5.7 or higher
-
-### 1.2.1
 - Fixed: newly entered access keys were silently discarded in favour of the previously stored pair, so keys could not be rotated from the settings page
 - Fixed: the first save on a fresh install dropped the entered keys and turned "Use IAM Role" on (the sanitize callback is now safe to run twice)
 - Fixed: credentials stored by v1.1.0 / v1.2.0 could not be decrypted after the key-derivation change; they are now migrated and re-encrypted automatically
-- Changed: access-key mode refuses to call AWS when no usable key pair is configured instead of falling back to the SDK's ambient credential chain; an admin notice explains why invalidations are paused
+- Added: `CLOUDFRONT_DISTRIBUTION_ID`, `CLOUDFRONT_AWS_REGION` and `CLOUDFRONT_USE_IAM_ROLE` constants
+- Added: post meta changes invalidate the post for allowlisted keys (WooCommerce price and stock by default; `notglossy_cloudfront_meta_keys` filter)
+- Added: WooCommerce stock quantity and stock status changes, including stock reduced by orders, invalidate the product (variations purge the parent)
+- Added: comments (approve, unapprove, edit, spam, trash, delete) purge the post they belong to
+- Added: one batched invalidation per request, with a fallback to `/*` for batches over CloudFront's limits
+- Added: `notglossy_cloudfront_invalidation_paths` filter; `WP_IMPORTING` and `wp_suspend_cache_invalidation()` are respected
 - Added: "Remove the stored access keys" control and a stored-credentials status on the settings page
 - Added: half-submitted key pairs and malformed keys are rejected with a settings error; array-valued fields no longer cause a fatal error
 - Added: HTTP connect/request timeouts on the CloudFront client and a `notglossy_cloudfront_client_config` filter
+- Changed: requires WordPress 5.7 or higher
+- Changed: access-key mode refuses to call AWS when no usable key pair is configured instead of falling back to the SDK's ambient credential chain; an admin notice explains why invalidations are paused
 - Changed: credentials are passed to the SDK as a provider object and client-construction errors no longer expose the secret in exception traces
 - Changed: a blank AWS Region now defaults to `us-east-1`; multi-segment regions such as `us-gov-west-1` are accepted
 - Updated dependencies to clear published advisories (Guzzle 7.15.5, guzzlehttp/psr7 2.13.1, jmespath.php 2.9.2, PHPCS 3.13.6, WPCS 3.4.1)

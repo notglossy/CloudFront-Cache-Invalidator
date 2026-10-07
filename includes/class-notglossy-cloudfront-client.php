@@ -134,7 +134,7 @@ class NotGlossy_CloudFront_Client {
 		/**
 		 * Filter the AWS SDK client configuration before the CloudFront client is created.
 		 *
-		 * @since 1.2.1
+		 * @since 1.3.0
 		 * @param array $config Client configuration (region, http timeouts, credentials, ...).
 		 */
 		$config = apply_filters( 'notglossy_cloudfront_client_config', $config );
