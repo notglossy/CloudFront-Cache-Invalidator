@@ -35,14 +35,14 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * CloudFront allows at most this many wildcard paths in progress at once.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 */
 	const MAX_WILDCARD_PATHS = 15;
 
 	/**
 	 * CloudFront allows at most this many paths per invalidation batch.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 */
 	const MAX_PATHS = 3000;
 
@@ -67,7 +67,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Meta keys watched by default: WooCommerce price and stock.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @var string[]
 	 */
 	const DEFAULT_META_KEYS = array(
@@ -85,7 +85,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Multisite: content saved under switch_to_blog() belongs to that site's
 	 * distribution, so each site's paths are sent with its own settings.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @var array<int,array<string,true>>
 	 */
@@ -94,7 +94,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Blog IDs whose configured default (site-wide) paths are queued.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @var array<int,true>
 	 */
@@ -103,7 +103,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Why paths were queued, keyed by blog ID, for the paths filter.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @var array<int,string[]>
 	 */
@@ -113,7 +113,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Posts whose paths are already queued for a meta or stock change, keyed
 	 * by blog ID and then post ID. Cleared when that blog's batch is sent.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @var array<int,array<int,true>>
 	 */
@@ -122,7 +122,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Term archive paths captured before a term is edited, keyed by term ID.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @var array<int,string[]>
 	 */
@@ -200,7 +200,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * and its previous URL when that differs (slug, parent or date change) or
 	 * the post stopped being viewable (unpublished, made private, trashed).
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param int          $post_id     Post ID.
 	 * @param WP_Post|null $post        Post object.
@@ -250,7 +250,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Removed terms are only visible here; wp_after_insert_post handles the
 	 * terms the post has after saving.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param int    $object_id  Object ID.
 	 * @param array  $terms      Terms passed to wp_set_object_terms().
@@ -292,7 +292,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 *
 	 * Trashing is handled by on_post_saved(), so deleting from the trash does nothing.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param int          $post_id Post ID.
 	 * @param WP_Post|null $post    Post object.
@@ -315,7 +315,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Only allowlisted keys count (WooCommerce price and stock by default),
 	 * because plugins such as view counters write meta on every page view.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @param int|int[] $meta_ids  Meta ID(s).
 	 * @param int       $object_id Post ID.
@@ -337,7 +337,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 *
 	 * Variations purge their parent product.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @param mixed $product WC_Product object or product ID.
 	 * @return void
@@ -363,7 +363,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Meta keys whose changes invalidate the post.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access public
 	 * @return string[]
 	 */
@@ -374,7 +374,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 		 * Add the keys your theme renders (for example ACF fields). Avoid keys
 		 * that change on every page view, such as view counters.
 		 *
-		 * @since 1.2.3
+		 * @since 1.3.0
 		 * @param string[] $meta_keys Meta keys. Default WooCommerce price and stock keys.
 		 */
 		$keys = apply_filters( 'notglossy_cloudfront_meta_keys', self::DEFAULT_META_KEYS );
@@ -385,7 +385,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Queue a post's paths once per request for data changes (meta, stock).
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @param int    $post_id Post ID.
 	 * @param string $reason  Reason.
@@ -417,7 +417,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Queue the post page when a comment is approved or leaves the approved state.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param string     $new_status New comment status.
 	 * @param string     $old_status Old comment status.
@@ -433,7 +433,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Queue the post page when an approved comment is posted.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param int        $comment_id       Comment ID.
 	 * @param int|string $comment_approved 1 if approved, 0 if not, 'spam' or 'trash'.
@@ -448,7 +448,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Queue the post page when an approved comment is edited.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param int $comment_id Comment ID.
 	 * @return void
@@ -464,7 +464,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Capture a term's archive paths before it is edited, so a slug or parent
 	 * change also purges the old URL.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param int    $term_id  Term ID.
 	 * @param string $taxonomy Taxonomy slug.
@@ -513,7 +513,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Queue a term's archive paths before it is deleted.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param int    $term_id  Term ID.
 	 * @param string $taxonomy Taxonomy slug.
@@ -533,7 +533,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Queue the configured default paths (site-wide changes).
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @return void
 	 */
@@ -554,7 +554,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Add paths to this request's batch.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param string[] $paths  Paths to invalidate.
 	 * @param string   $reason Why they are queued.
@@ -580,7 +580,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Must be called while that site is the current blog, because the default
 	 * paths come from its settings.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @param int|null $blog_id Blog ID. Defaults to the current blog.
 	 * @return string[]
@@ -611,7 +611,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Batches that exceed CloudFront's wildcard or path limits are collapsed
 	 * to a full purge rather than being rejected.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access public
 	 * @return mixed|null Result for the last batch sent (client result or WP_Error), or null when nothing was sent.
 	 */
@@ -650,7 +650,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Send one site's queued paths. The site must be the current blog.
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @param int $blog_id Blog ID.
 	 * @return mixed|null
@@ -669,7 +669,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 		 * WordPress URLs to a different CloudFront path layout. On multisite
 		 * this runs once per site, with that site switched in.
 		 *
-		 * @since 1.2.2
+		 * @since 1.3.0
 		 * @param string[] $paths   Paths to invalidate.
 		 * @param string[] $reasons Why the paths were queued (e.g. post_saved, term_updated, switch_theme).
 		 */
@@ -723,7 +723,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Invalidate a post's URLs immediately before deletion.
 	 *
-	 * Called without a post, it keeps its pre-1.2.2 behaviour and sends the
+	 * Called without a post, it keeps its pre-1.3.0 behaviour and sends the
 	 * configured default paths.
 	 *
 	 * @since 1.2.0
@@ -748,7 +748,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Get the configured default paths.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @return string[]
 	 */
@@ -764,7 +764,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Current blog ID (1 outside multisite).
 	 *
-	 * @since 1.2.3
+	 * @since 1.3.0
 	 * @access private
 	 * @return int
 	 */
@@ -775,7 +775,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Whether automatic invalidation is suspended for this request.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @return bool
 	 */
@@ -790,7 +790,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Whether a post has a public URL.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @param WP_Post $post Post object.
 	 * @return bool
@@ -802,7 +802,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Whether a taxonomy has public term archives.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @param string $taxonomy Taxonomy slug.
 	 * @return bool
@@ -814,7 +814,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Whether a path contains a wildcard.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @param string $path Path.
 	 * @return bool
@@ -826,7 +826,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Paths for a viewable post: its URL, sub-pages and the listings that show it.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @param WP_Post $post Post object.
 	 * @return string[]
@@ -846,7 +846,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * Paths of listings that include a post: archives, blog home, feed,
 	 * author archive and term archives.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @param WP_Post $post Post object.
 	 * @return string[]
@@ -892,7 +892,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Paths for a term archive (the archive, its pages and its feed).
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @param WP_Term $term Term object.
 	 * @return string[]
@@ -909,7 +909,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Paths for a listing URL, including its paginated pages.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @param string|false $url Listing URL.
 	 * @return string[]
@@ -932,7 +932,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	 * - URL with a query string (plain permalinks): the exact path and query.
 	 * - Anything else: the exact path, plus "<path>/*" when $with_children.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @param string|false $url           URL.
 	 * @param bool         $with_children Also purge everything below the path.
@@ -972,7 +972,7 @@ class NotGlossy_CloudFront_Invalidation_Manager {
 	/**
 	 * Queue the page of the post a comment belongs to.
 	 *
-	 * @since 1.2.2
+	 * @since 1.3.0
 	 * @access private
 	 * @param WP_Comment|null $comment Comment.
 	 * @return void
