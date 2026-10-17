@@ -26,28 +26,28 @@ class NotGlossy_CloudFront_Credential_Manager {
 	/**
 	 * Credential status: nothing stored or configured.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 */
 	const STATUS_NONE = 'none';
 
 	/**
 	 * Credential status: keys come from constants or environment variables.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 */
 	const STATUS_EXTERNAL = 'external';
 
 	/**
 	 * Credential status: keys are stored in the database and decrypt correctly.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 */
 	const STATUS_STORED = 'stored';
 
 	/**
 	 * Credential status: keys are stored but cannot be decrypted (e.g. salts changed).
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 */
 	const STATUS_UNDECRYPTABLE = 'undecryptable';
 
@@ -67,7 +67,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	 * Only payloads issued here are carried through on that pass, so encrypted
 	 * values posted directly in a settings submission are never trusted.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access private
 	 * @var string[]
 	 */
@@ -144,7 +144,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	/**
 	 * Get the salt material shared by all key derivations.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access private
 	 * @return string[] Salt parts.
 	 */
@@ -188,7 +188,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	 * Only used to decrypt payloads written before the switch to HKDF, so
 	 * they can be re-encrypted with the current key.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access private
 	 * @return string Binary encryption key.
 	 */
@@ -244,7 +244,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	/**
 	 * Decrypt a payload and report whether a legacy key or cipher was needed.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access private
 	 * @param string $encoded JSON encoded payload.
 	 * @return array|false Array with 'plaintext' and 'legacy' keys, or false on failure.
@@ -354,7 +354,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	 * Check whether a string is a payload produced by encrypt_value() or a
 	 * legacy release, without attempting to decrypt it.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access private
 	 * @param mixed $encoded Candidate payload.
 	 * @return bool
@@ -440,7 +440,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	/**
 	 * Check whether credentials come from constants or environment variables.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access public
 	 * @return bool
 	 */
@@ -457,7 +457,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	/**
 	 * Check whether an encrypted key pair is stored in the options table.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access public
 	 * @return bool
 	 */
@@ -469,7 +469,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	/**
 	 * Describe where credentials come from and whether they are usable.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access public
 	 * @return string One of the STATUS_* constants.
 	 */
@@ -537,7 +537,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	 * Non-string values (for example an array in a crafted POST) are treated
 	 * as empty instead of causing a TypeError.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access private
 	 * @param array  $input Raw input.
 	 * @param string $key   Field name.
@@ -554,7 +554,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	/**
 	 * Validate an AWS access key ID.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access private
 	 * @param string $value Submitted value.
 	 * @return bool
@@ -569,7 +569,7 @@ class NotGlossy_CloudFront_Credential_Manager {
 	 * Secrets are not sanitized (that would silently alter them); they only
 	 * have to be printable ASCII without whitespace.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access private
 	 * @param string $value Submitted value.
 	 * @return bool

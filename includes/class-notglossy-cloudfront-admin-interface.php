@@ -73,7 +73,7 @@ class NotGlossy_CloudFront_Admin_Interface {
 	 *
 	 * Without this, automatic invalidations fail silently on every save.
 	 *
-	 * @since 1.2.1
+	 * @since 1.3.0
 	 * @access public
 	 * @return void
 	 */
